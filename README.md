@@ -4,6 +4,8 @@
 
 EcoTrace empowers communities and civic authorities to detect, track, and resolve environmental waste hotspots through computer vision, automated classification, and verified reporting.
 
+**See [CHECKLIST.md](./CHECKLIST.md) for what is done and what remains.**
+
 ---
 
 ## Architecture & Team Modules
