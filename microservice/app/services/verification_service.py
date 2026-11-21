@@ -196,7 +196,7 @@ class VerificationService:
             and siglip.predicted_category not in (None, "no_waste")
             and (siglip.confidence or 0.0) >= _SIGLIP_EVIDENCE_MIN_CONFIDENCE
         )
-        judge_waste = judge is not None and judge.available and judge.judgement == "YES"
+        judge_waste = judge_summary.available and judge_summary.judgement == "YES"
         is_waste_detected = yolo_waste or siglip_waste or judge_waste
         waste_category = report_type.value  # replaced by the Phase 5 engine
         decision = self._decide(yolo_waste, yolo_error, siglip, judge)
