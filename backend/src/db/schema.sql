@@ -103,3 +103,35 @@ CREATE TABLE IF NOT EXISTS letters (
 );
 
 CREATE INDEX IF NOT EXISTS idx_letters_site ON letters (site_id);
+
+-- 8. Phase 4.1 — community votes; one latest vote per user per site
+CREATE TABLE IF NOT EXISTS site_votes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  vote VARCHAR(20) NOT NULL, -- confirm, reject, cleaned
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (site_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_votes_site ON site_votes (site_id);
+
+-- Phase 4.2 — notes need an author for activity and moderation
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+-- Phase 4.4 — report ownership for "My Activity"
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS user_id TEXT;
+
+-- 9. Phase 4.5 — photo abuse flags; 3+ distinct reporters hide a photo pending moderation
+CREATE TABLE IF NOT EXISTS photo_flags (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  photo_id TEXT NOT NULL,
+  reporter_id TEXT NOT NULL,
+  reason VARCHAR(50),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (photo_id, reporter_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_photo_flags_photo ON photo_flags (photo_id);

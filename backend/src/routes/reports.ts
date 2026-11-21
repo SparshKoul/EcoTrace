@@ -4,12 +4,14 @@ import { query } from "../db/pool.js";
 import { aiVerifyClient } from "../services/ai/verifyClient.js";
 import { findNearbySite, type Site } from "../services/sites/siteMerger.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
+import { phase4Memory } from "../services/phase4Store.js";
 
 const createReportSchema = z.object({
   photoUrl: z.string().url("Valid photo URL is required"),
   wasteType: z.string().min(1, "wasteType must be specified"),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
+  userId: z.string().optional(),
 });
 
 export const reportRoutes: FastifyPluginAsync = async (app) => {
@@ -23,7 +25,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    const { photoUrl, wasteType, latitude, longitude } = parseResult.data;
+    const { photoUrl, wasteType, latitude, longitude, userId } = parseResult.data;
 
     // 1. Resolve administrative boundaries (Ward, MLA, MP)
     const boundary = resolveBoundary({ latitude, longitude });
@@ -79,9 +81,9 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
 
       // 4. Insert report linked to site
       const insertReportQuery = `
-        INSERT INTO reports (site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id, site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, created_at
+        INSERT INTO reports (site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, user_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, user_id, created_at
       `;
 
       const reportResult = await query(insertReportQuery, [
@@ -93,9 +95,21 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
         aiResult.is_waste,
         aiResult.confidence,
         aiResult.is_waste ? "verified" : "needs_review",
+        userId ?? null,
       ]);
 
       const createdReport = reportResult.rows[0];
+      phase4Memory.saveReport({
+        id: String(createdReport.id),
+        site_id: String(createdReport.site_id),
+        user_id: userId,
+        photo_url: photoUrl,
+        waste_type: wasteType,
+        latitude,
+        longitude,
+        status: String(createdReport.status),
+        created_at: new Date(String(createdReport.created_at)).toISOString(),
+      });
       return reply.status(201).send({
         success: true,
         report: createdReport,
@@ -107,15 +121,29 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     } catch (err: unknown) {
       request.log.error(err, "Database error during report ingestion");
       // Fallback response for offline mock mode
+      const fallbackId = "mock-" + Date.now();
+      const fallbackStatus = aiResult.is_waste ? "verified" : "needs_review";
+      phase4Memory.saveReport({
+        id: fallbackId,
+        site_id: "mock-site-1",
+        user_id: userId,
+        photo_url: photoUrl,
+        waste_type: wasteType,
+        latitude,
+        longitude,
+        status: fallbackStatus,
+        created_at: new Date().toISOString(),
+      });
       return reply.status(201).send({
         success: true,
         report: {
-          id: "mock-" + Date.now(),
+          id: fallbackId,
           photoUrl,
           wasteType,
           latitude,
           longitude,
-          status: aiResult.is_waste ? "verified" : "needs_review",
+          status: fallbackStatus,
+          user_id: userId ?? null,
           created_at: new Date().toISOString(),
         },
         siteId: "mock-site-1",

@@ -89,6 +89,9 @@ export const memory = {
   listClaims(siteId: string): CleanupClaimRecord[] {
     return [...claims.values()].filter((claim) => claim.site_id === siteId);
   },
+  listAllClaims(): CleanupClaimRecord[] {
+    return [...claims.values()];
+  },
   addBacker(record: BackerRecord): boolean {
     const key = `${record.site_id}:${record.user_id}`;
     if (backers.has(key)) return false;

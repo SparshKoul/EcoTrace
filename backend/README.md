@@ -85,14 +85,79 @@ Error responses: `400` validation / not-near-site, `404` site or claim not found
 
 ---
 
+---
+
+## Phase 4 — Community Engagement & Citizen Verification
+
+| Roadmap step | Implementation |
+| :--- | :--- |
+| **4.1 Community Voting & Backing** | `src/routes/votes.ts`, `src/services/sites/VoteService.ts`, `src/domain/sites/VoteTally.ts`, `site_votes` table |
+| **4.2 Community Notes & Observations** | `src/routes/notes.ts`, `src/services/phase4Repository.ts`, `notes.user_id` column |
+| **4.3 AI Notes Summarizer** | `src/services/notes/NoteSummarizer.ts`, `src/domain/notes/NoteSummary.ts` |
+| **4.4 User Report History** | `src/routes/activity.ts`, `getActivity()` in `phase4Repository.ts`, `reports.user_id` column |
+| **4.5 Photo Abuse & Flagging** | `src/routes/flags.ts`, `src/services/flags/PhotoFlagService.ts`, `src/domain/flags/PhotoFlags.ts`, `photo_flags` table |
+
+### Domain rules enforced
+
+- **Voting:** one latest vote per user per site (`confirm | reject | cleaned`). Votes must be within **1000 m** of the site (`VOTE_RADIUS_M`); a confirm vote also counts toward the 10-backer quorum. A site is rejected when distinct reject voters exceed backers by **3 or more** (safety valve).
+- **Notes:** 1–2000 characters, attributed to a user. `GET /sites/:id/notes/summary` caches a briefing; it calls `${AI_SERVICE_URL}/internal/summarize-notes` when available and otherwise builds a deterministic briefing from the citizen text only — never inventing content.
+- **Activity:** `GET /users/me/reports` and `GET /users/me/activity` read the user id from the `x-user-id` header (or `?userId=`). Activity merges reports, votes, notes, and Phase 3 cleanup claims.
+- **Flagging:** 3+ distinct reporters hide a photo pending moderation. Flags are keyed by **report id**; hidden photos are returned as `photo_url: null` with `pending_moderation: true` in My Reports and `photoHidden: true` in My Activity.
+- `POST /reports` now accepts an optional `userId` so new reports appear in that user's activity.
+
+### Phase 4 endpoints
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `POST` | `/api/sites/:id/vote` | Cast/replace a vote within 1000 m |
+| `GET` | `/api/sites/:id/votes` | Current vote tally |
+| `POST` | `/api/sites/:id/notes` | Add an observation |
+| `GET` | `/api/sites/:id/notes` | List observations |
+| `GET` | `/api/sites/:id/notes/summary` | AI or deterministic briefing |
+| `POST` | `/api/photos/:id/flag` | Flag a report photo |
+| `GET` | `/api/photos/:id/flag` | Moderation state for a photo |
+| `GET` | `/api/users/me/reports` | My reports (hidden photos masked) |
+| `GET` | `/api/users/me/activity` | My full activity feed |
+
+`/api/users/:userId/reports` and `/api/users/:userId/activity` are also available as aliases.
+
+```bash
+BASE=http://127.0.0.1:8000/api
+SITE=site_demo_chitkara
+
+curl -s -X POST "$BASE/sites/$SITE/vote" -H 'Content-Type: application/json' \
+  -d '{"userId":"voter-1","vote":"confirm","latitude":30.5158,"longitude":76.6592}'
+
+curl -s -X POST "$BASE/sites/$SITE/notes" -H 'Content-Type: application/json' \
+  -d '{"userId":"voter-1","content":"Bin was replaced on Monday."}'
+
+curl -s "$BASE/sites/$SITE/notes/summary"
+
+for i in 1 2 3; do
+  curl -s -X POST "$BASE/photos/rpt_demo_1/flag" -H 'Content-Type: application/json' \
+    -d "{\"reporterId\":\"reporter-$i\"}"
+done
+
+curl -s "$BASE/users/me/reports" -H 'x-user-id: demo-user'
+```
+
+Errors: `400` validation, `vote_too_far`, or `USER_ID_REQUIRED`; `404` site/report/photo not found.
+
+---
+
 ## Verification
 
-`npm test` runs **31 tests** (12 suites), including Phase 3 tests for:
+`npm test` runs **40 tests** (15 suites), including Phase 3 and Phase 4 tests for:
 
 - 10-backer quorum and distinct-user counting (`src/domain/sites/Backers.test.ts`)
 - cleanup proximity, pending/conflict checks, and state transitions (`src/domain/sites/SiteCleanup.test.ts`)
 - quote verification against the real SWM corpus, mid-word/altered quote rejection, citation stripping, and letter drafting (`src/services/letters/QuoteVerifier.test.ts`)
+- one-latest-vote-per-user, vote radius, reject safety valve (`src/domain/sites/VoteTally.test.ts`)
+- three-reporter photo hide threshold and repeat-flag deduplication (`src/domain/flags/PhotoFlags.test.ts`)
+- deterministic note briefing content and note-count capping (`src/domain/notes/NoteSummary.test.ts`)
 
 All endpoint flows were also smoke-tested with PostgreSQL offline using the in-memory fallback: 9 backers stay unverified, the 10th verifies and escalates; a 1112 m after-photo is rejected with 400, an 11 m one is accepted with 202 and closes the site after validation; the generated letter had 3 verified citations with `template_fallback: false`.
+
+Phase 4 smoke test: an 11 m confirm vote was accepted (and incremented the backer count), a 1590 m vote returned `vote_too_far` with 400; a note was added and the summary briefing listed all 4 observations with `source: "offline"`; three distinct flags moved `rpt_demo_1` to `hidden: true`, and both My Reports and My Activity then returned that photo as hidden.
 
 `npm audit` reports 0 vulnerabilities (zod was upgraded to 4.6.7 to clear a DoS advisory; the only required code change was `PORT: z.string().transform(Number).default(8000)` in `src/config/env.ts`).
