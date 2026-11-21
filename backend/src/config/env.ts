@@ -2,7 +2,7 @@ import { z } from "zod";
 import "dotenv/config";
 
 const envSchema = z.object({
-  PORT: z.string().transform(Number).default("8000"),
+  PORT: z.coerce.number().default(8000),
   HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL must be provided for PostgreSQL"),
