@@ -270,7 +270,7 @@ The shared `EvidenceAnalysis` type in `src/types.ts` documents the response shap
 ## Testing and verification
 
 ```bash
-npm test        # 14 tests across 3 files
+npm test        # 17 tests across 4 files
 npm run build   # tsc --noEmit && vite build
 npm run lint    # eslint .
 ```
@@ -280,6 +280,7 @@ All three commands pass in this commit. Tests cover:
 - Haversine distance, the 20 m merge radius, distance formatting and cluster keys
 - Capture gates: GPS accuracy > 30 m blocks, recorder support, missing-bin GPS requirement, sign-in and offline cases, waste-type requirement
 - Score quorum locking and all three score formulas
+- `useGps.locate()` with mocked geolocation: success returns a fix, denial returns an actionable error, insecure context refuses with an HTTPS message
 
 ---
 
