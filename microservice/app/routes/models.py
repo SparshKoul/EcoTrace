@@ -9,6 +9,12 @@ from app.schemas.response import ModelInfoResponse, ReadyResponse
 router = APIRouter(tags=["health"])
 
 
+@router.get("/v1/models", response_model=ModelInfoResponse, include_in_schema=False)
+async def list_models_alias(request: Request) -> ModelInfoResponse:
+    """Backwards-compatible alias for callers polling /v1/models."""
+    return await list_models(request)
+
+
 @router.get("/health/ready", response_model=ReadyResponse, summary="Readiness probe")
 async def readiness(request: Request) -> ReadyResponse:
     """Reports per-component availability; the service itself stays 'ready'

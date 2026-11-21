@@ -97,6 +97,33 @@ class FakeYoloDetector:
         )
 
 
+class FakeSiglip:
+    """Deterministic zero-shot classifier fake — no model download."""
+
+    def __init__(
+        self,
+        category: str = "plastic_waste",
+        confidence: float = 0.87,
+        *,
+        available: bool = True,
+        error: str | None = None,
+    ) -> None:
+        self.model_id = "fake-siglip-for-tests"
+        self.predicted = category
+        self.score = confidence
+        self.load_error = error
+        self._available = available
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._available
+
+    def classify(self, image):
+        if not self._available:
+            return None, None, self.load_error or "siglip_unavailable"
+        return self.predicted, self.score, None
+
+
 class FakeRekognition:
     """Deterministic Rekognition fake — no boto3 client, no AWS credentials.
 
@@ -157,11 +184,13 @@ def make_registry(
     *,
     rekognition: Any = None,
     privacy: bool = True,
+    siglip: Any = None,
 ) -> ModelRegistry:
     """Build a registry with fakes (default: one bottle detection, no AWS)."""
     registry = load_models(TEST_SETTINGS)
     registry.yolo = detector if detector is not None else FakeYoloDetector()
     registry.rekognition = rekognition
+    registry.siglip = siglip
     if not privacy:
         registry.privacy = None
     elif registry.privacy is None:
@@ -231,6 +260,7 @@ __all__ = [
     "TEST_SETTINGS",
     "FakeYoloDetector",
     "FakeRekognition",
+    "FakeSiglip",
     "make_registry",
     "make_test_image",
     "make_large_image_bytes",

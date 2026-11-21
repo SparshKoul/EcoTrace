@@ -56,10 +56,17 @@ class PrivacySummary(BaseModel):
 
 
 class SiglipSummary(BaseModel):
-    """Placeholder summary — populated from Phase 4 onward."""
+    """SigLIP 2 zero-shot classification result.
+
+    ``confidence`` is a relative softmax score over candidate text prompts,
+    NOT a calibrated probability or a trained classifier confidence.
+    """
 
     available: bool = False
     predicted_category: Optional[str] = None
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    model_id: Optional[str] = None
+    error: Optional[str] = None
 
 
 class BedrockSummary(BaseModel):

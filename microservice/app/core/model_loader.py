@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
+from app.models.siglip_classifier import SiglipClassifier
 from app.models.yolo_detector import YoloDetector
 from app.services.privacy_service import PrivacyService
 from app.services.rekognition_service import RekognitionService
@@ -41,11 +42,16 @@ class ModelRegistry:
             status["yolo"] = self.yolo.status().model_dump()
         else:
             status["yolo"] = {"available": False, "reason": "not_loaded"}
-        for name, component in (("siglip", self.siglip), ("bedrock", self.bedrock)):
+        for name, component in (("bedrock", self.bedrock),):
             available = bool(getattr(component, "available", False)) if component else False
             status[name] = {"available": available}
         status["rekognition"] = {"available": self.rekognition is not None}
         status["privacy"] = {"available": self.privacy is not None}
+        status["siglip"] = {
+            "available": bool(self.siglip and self.siglip.is_loaded),
+            "model": self.siglip.model_id if self.siglip else None,
+            "reason": self.siglip.load_error if self.siglip else None,
+        }
         return status
 
     def model_versions(self) -> dict[str, Optional[str]]:
@@ -96,7 +102,19 @@ def load_models(settings: Optional[Settings] = None) -> ModelRegistry:
     else:
         logger.info("Rekognition disabled via configuration.")
 
-    # Later phases attach siglip / bedrock / decision engine here.
+    # --- SigLIP 2 (local, pretrained — zero-shot, no training or AWS) -----
+    if settings.siglip_enabled:
+        classifier = SiglipClassifier(
+            settings.siglip_model_id,
+            device=settings.siglip_embedding_device,
+            similarity_threshold=settings.siglip_similarity_threshold,
+        )
+        classifier.load()
+        registry.siglip = classifier
+    else:
+        logger.info("SigLIP 2 disabled via configuration.")
+
+    # Later phases attach bedrock / decision engine here.
 
     _registry = registry
     return registry

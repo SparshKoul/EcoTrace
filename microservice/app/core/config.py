@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     bedrock_max_retries: int = Field(default=3, ge=1, le=10)
 
     # --- SigLIP 2 ----------------------------------------------------------
-    siglip_enabled: bool = False
+    siglip_enabled: bool = True  # local, free, pretrained — zero-shot classification
     siglip_model_id: str = "google/siglip2-base-patch16-224"
     siglip_embedding_device: str = "auto"
     siglip_similarity_threshold: Probability = 0.85  # duplicate-image cosine threshold

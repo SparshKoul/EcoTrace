@@ -24,6 +24,14 @@ Implemented:
 - Pydantic request/response schemas, structured error envelopes
 - Unit tests with a fake detector (no weights / AWS credentials required)
 
+**Phase 4 implemented:** SigLIP 2 zero-shot waste classification
+(`app/models/siglip_classifier.py`) — local, pretrained, free. Classifies an
+image into one of the 7 waste classes by cosine similarity against text
+prompts, with a "no_waste" negative prompt. Separate `embed_image()` method for
+embeddings; bounded in-memory duplicate detection. Enabled by default via
+`SIGLIP_ENABLED=true`; confidence is a relative softmax score, not a calibrated
+probability. No trained head or accuracy is claimed.
+
 Implemented alongside Phase 2: **waste-detector training pipeline**
 (`training/train_yolo.py`, `validate_yolo.py`, `prepare_dataset.py`,
 `waste_classes.py`, `datasets/waste.yaml`) — fine-tune/validate with

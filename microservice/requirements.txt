@@ -15,6 +15,7 @@ opencv-python-headless>=4.9
 pillow>=10.4
 numpy>=1.26,<3.0
 onnxruntime>=1.18      # optional CPU export/inference path
+transformers>=4.49     # SigLIP 2 zero-shot classification (5.x supported)
 
 # --- AWS -----------------------------------------------------------------
 boto3>=1.34

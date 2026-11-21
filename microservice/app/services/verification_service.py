@@ -29,6 +29,7 @@ from app.schemas.response import (
     PrivacySummary,
     RekLabel,
     RekognitionSummary,
+    SiglipSummary,
     VerifyResponse,
     YoloStatus,
 )
@@ -134,12 +135,33 @@ class VerificationService:
             )
         results = await asyncio.gather(*tasks.values())
         detections, yolo_error = results[0]
-        if "labels" in tasks:
-            label_result = results[1]
+        label_idx = 1 if "labels" in tasks else None
+        if label_idx is not None:
+            label_result = results[label_idx]
             rek_summary.labels = [RekLabel(name=l.name, confidence=l.confidence) for l in label_result.labels]
             rek_summary.model_version = label_result.model_version
             if not rek_summary.error and label_result.error:
                 rek_summary.error = label_result.error
+
+        # --- SigLIP 2 zero-shot classification (on the processed image) ---- #
+        siglip: SiglipSummary = SiglipSummary()
+        classifier = self._registry.siglip
+        if classifier is not None:
+            if classifier.is_loaded:
+                category, confidence, error = await bounded(classifier.classify, processed)
+                siglip = SiglipSummary(
+                    available=True,
+                    predicted_category=category,
+                    confidence=confidence,
+                    model_id=classifier.model_id,
+                    error=error,
+                )
+            else:
+                siglip = SiglipSummary(
+                    available=False,
+                    model_id=classifier.model_id,
+                    error=classifier.load_error,
+                )
 
         # --- Decision ------------------------------------------------------- #
         is_waste_detected = bool(detections)
@@ -164,6 +186,7 @@ class VerificationService:
             detections=detections,
             rekognition=rek_summary,
             privacy=privacy_summary,
+            siglip=siglip,
             decision=decision,
             model_versions=ModelVersions(**versions),
         )
