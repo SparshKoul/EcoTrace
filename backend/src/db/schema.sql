@@ -246,6 +246,16 @@ ALTER TABLE reports ADD COLUMN IF NOT EXISTS severity_score INTEGER;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS public_audit_summary TEXT;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS pii_blur_count INTEGER;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'photo';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS request_ip_masked TEXT;
+
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cover_media_url TEXT;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'photo';
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS ulb_name TEXT;
+
+UPDATE reports SET request_ip_masked = ip_masked WHERE request_ip_masked IS NULL;
+UPDATE sites SET ulb_name = ward_name WHERE ulb_name IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sites_location ON sites USING GIST (location);
 CREATE INDEX IF NOT EXISTS idx_reports_ip_hash ON reports (ip_hash);

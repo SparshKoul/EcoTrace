@@ -94,6 +94,68 @@ export interface EvidenceAnalysis {
   readonly citations: readonly string[];
 }
 
+export interface V1Site {
+  readonly id: string;
+  readonly status: string;
+  readonly trash_category: string;
+  readonly severity_score: number;
+  readonly report_count: number;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly cover_media_url: string | null;
+  readonly media_type: 'photo' | 'video';
+  readonly ulb_name: string | null;
+  readonly mla_constituency: string | null;
+  readonly mp_constituency: string | null;
+  readonly captured_at?: string;
+  readonly request_ip_masked?: string;
+  readonly pii_blur_count?: number;
+  readonly detected_items?: string[] | string;
+  readonly updated_at: string;
+}
+
+export interface FeedReport {
+  readonly id: string;
+  readonly site_id: string;
+  readonly media_type: 'photo' | 'video';
+  readonly sanitized_media_url: string | null;
+  readonly thumbnail_url: string | null;
+  readonly trash_category: string;
+  readonly detected_items: string[] | string;
+  readonly severity: number;
+  readonly pii_blur_count: number;
+  readonly public_audit_summary: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly captured_at: string | null;
+  readonly request_ip_masked: string | null;
+  readonly status: string;
+  readonly site_status: string;
+  readonly report_count: number;
+  readonly grouped?: boolean;
+  readonly ulb_name: string | null;
+  readonly mla_constituency: string | null;
+  readonly mp_constituency: string | null;
+}
+
+export interface ActivityResponse {
+  readonly user_id: string;
+  readonly summary: {
+    readonly total_reports: number;
+    readonly pii_protected: number;
+    readonly active_sites: number;
+    readonly cleaned_sites: number;
+  };
+  readonly activity: readonly FeedReport[];
+}
+
+export interface V1ReportResult extends FeedReport {
+  readonly grouped: boolean;
+  readonly captured_at: string;
+  readonly letter: ComplaintLetter;
+  readonly thumbnail_url: string | null;
+}
+
 export interface ComplaintLetter {
   readonly siteId: string;
   readonly recipient: string;

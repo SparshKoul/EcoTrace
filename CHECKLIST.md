@@ -38,6 +38,9 @@
 - [x] `POST /api/v1/reports` with `trustProxy`, masked IP + SHA-256 `ip_hash`, exact `captured_at`, 422 on invalid trash
 - [x] PostGIS `ST_DWithin(..., 20)` deduplication with haversine fallback; verified 11 m second report grouped into the same site
 - [x] Frontend privacy/transparency notice before submission
+- [x] Video mode: sharpest keyframe (Laplacian) + sampled-frame PII boxes with nearest-sample interpolation across frames, sanitized MP4 + thumbnail
+- [x] Auth-bound ingestion: `user_id` from Supabase token, `GET /api/v1/sites`, `/reports/feed`, `/users/me/activity`
+- [x] Frontend `CaptureModal` with photo/video, 5–10s clip, GPS/timestamp lock at capture, 3-step progress, and instant map + activity sync
 - [x] Model chain is env-configurable (requested Gemini names first, known-good fallbacks)
 
 ### Authentication
