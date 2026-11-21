@@ -1,6 +1,9 @@
+import path from "node:path";
 import { env } from "./config/env.js";
 import fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
 import { checkDbHealth } from "./db/pool.js";
 import { reportRoutes } from "./routes/reports.js";
 import { siteRoutes } from "./routes/sites.js";
@@ -16,9 +19,12 @@ import { rankingRoutes } from "./routes/rankings.js";
 import { scanRoutes } from "./routes/scans.js";
 import { shareRoutes } from "./routes/share.js";
 import { authRoutes } from "./routes/auth.js";
+import { v1ReportRoutes } from "./routes/v1Reports.js";
 
 export function buildServer(): FastifyInstance {
   const app = fastify({
+    // Required to read the real client IP behind proxies for IP masking / hash.
+    trustProxy: true,
     logger: {
       level: env.LOG_LEVEL,
       transport:
@@ -54,8 +60,17 @@ export function buildServer(): FastifyInstance {
     };
   });
 
+  // Multipart uploads and the public sanitized-image folder.
+  app.register(multipart, { limits: { fileSize: 12 * 1024 * 1024, files: 1 } });
+  app.register(fastifyStatic, {
+    root: path.resolve(process.cwd(), "storage", "public"),
+    prefix: "/public/",
+    decorateReply: false,
+  });
+
   // Register feature routes
   app.register(reportRoutes, { prefix: "/api" });
+  app.register(v1ReportRoutes, { prefix: "/api" });
   app.register(siteRoutes, { prefix: "/api" });
 
   // Phase 3 — Civic Action & Cleanup Verification

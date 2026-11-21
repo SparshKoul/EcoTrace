@@ -8,7 +8,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL must be provided for PostgreSQL"),
   /** Set to "true"/"false" to override SSL auto-detection (Supabase requires SSL). */
   DB_SSL: z.enum(["true", "false"]).optional(),
-  AI_SERVICE_URL: z.string().url().default("http://localhost:5000"),
+  AI_SERVICE_URL: z.string().url().default("http://127.0.0.1:8100"),
   CORS_ORIGIN: z.string().default("*"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 

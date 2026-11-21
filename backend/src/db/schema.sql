@@ -228,3 +228,41 @@ CREATE POLICY "Users can read own profile" ON public.users
 DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
 CREATE POLICY "Users can update own profile" ON public.users
   FOR UPDATE USING (auth.uid() = id);
+
+-- 12. AI transparency pipeline (image -> blur -> classify -> public report)
+CREATE EXTENSION IF NOT EXISTS postgis;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS location GEOGRAPHY(POINT, 4326);
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS trash_category VARCHAR(60);
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS severity_score INTEGER;
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS ip_masked TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS ip_hash TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS captured_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS sanitized_photo_url TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_valid_trash BOOLEAN;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS trash_category VARCHAR(60);
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS detected_items JSONB;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS severity_score INTEGER;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS public_audit_summary TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS pii_blur_count INTEGER;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_sites_location ON sites USING GIST (location);
+CREATE INDEX IF NOT EXISTS idx_reports_ip_hash ON reports (ip_hash);
+
+-- Keep the geography point in sync with latitude/longitude.
+CREATE OR REPLACE FUNCTION set_site_location()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.location := ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326)::geography;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sites_location ON sites;
+CREATE TRIGGER trg_sites_location
+BEFORE INSERT OR UPDATE OF latitude, longitude ON sites
+FOR EACH ROW EXECUTE FUNCTION set_site_location();
+
+UPDATE sites SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+WHERE location IS NULL;

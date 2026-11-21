@@ -249,6 +249,10 @@ export function CapturePanel() {
               <Button variant="outline" onClick={reset} disabled={sending}>Clear</Button>
             )}
           </div>
+          <p className="rounded-xl bg-accent-soft px-3 py-2 text-center text-xs font-semibold text-accent">
+            Privacy &amp; transparency: your masked IP, GPS coordinates, and timestamp will be logged publicly on the
+            map for civic transparency; faces and vehicle plates are blurred automatically before publication.
+          </p>
           <p className="text-center text-xs text-muted">
             Submission returns 202 Accepted. AI verification and legal drafting happen asynchronously.
           </p>

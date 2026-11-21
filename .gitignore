@@ -16,6 +16,9 @@ build/
 .env.*
 **/.env
 **/.env.*
+# Templates are safe and should be committed.
+!.env.example
+!**/.env.example
 
 # Logs
 *.log
