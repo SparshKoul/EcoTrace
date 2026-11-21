@@ -1,0 +1,133 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Hanken Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
+
+  --color-page: #fbf6ee;
+  --color-surface: #fffdf8;
+  --color-tile: #f4ecdf;
+  --color-ink: #221c15;
+  --color-muted: #5f5446;
+  --color-line: #e5d9c7;
+  --color-accent: #0b7a73;
+  --color-accent-soft: #e3f3f0;
+  --color-sun: #ffc23d;
+  --color-coral: #ff7a59;
+
+  --color-dump: #c5221f;
+  --color-nobin: #e37400;
+  --color-water: #1967d2;
+  --color-construction: #5d4037;
+  --color-overflow: #7b3fa6;
+
+  --radius-card: 16px;
+  --radius-sheet: 28px;
+}
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer components {
+  .eco-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    padding: 16px;
+  }
+
+  .eco-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+}
+
+/* Leaflet sits on the warm basemap and keeps its controls clear of the bottom nav. */
+.leaflet-container {
+  background: #efe7d9;
+  font-family: var(--font-sans);
+}
+
+.leaflet-control-attribution {
+  font-size: 10px !important;
+}
+
+.eco-cluster {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid var(--color-surface);
+  background: var(--color-accent);
+  color: white;
+  font: 700 13px/1 var(--font-display);
+  box-shadow: 0 2px 8px rgb(34 28 21 / 25%);
+}
+
+.eco-pin {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 3px solid var(--color-surface);
+  color: white;
+  font: 700 12px/1 var(--font-display);
+  box-shadow: 0 2px 8px rgb(34 28 21 / 30%);
+}
+
+.eco-pin--verified {
+  outline: 3px solid var(--color-accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+@media print {
+  nav,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+}
