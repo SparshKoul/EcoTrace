@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { query } from "../db/pool.js";
 import { aiVerifyClient } from "../services/ai/verifyClient.js";
+import { findNearbySite, type Site } from "../services/sites/siteMerger.js";
+import { resolveBoundary } from "../services/location/boundaryResolver.js";
 
 const createReportSchema = z.object({
   photoUrl: z.string().url("Valid photo URL is required"),
@@ -23,18 +25,67 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
 
     const { photoUrl, wasteType, latitude, longitude } = parseResult.data;
 
-    // 1. Verify photo through AI service
+    // 1. Resolve administrative boundaries (Ward, MLA, MP)
+    const boundary = resolveBoundary({ latitude, longitude });
+
+    // 2. Verify photo through AI service
     const aiResult = await aiVerifyClient.verifyPhoto(photoUrl);
 
-    // 2. Insert report into PostgreSQL
-    const insertQuery = `
-      INSERT INTO reports (photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, created_at
-    `;
-
     try {
-      const result = await query(insertQuery, [
+      // 3. Check for 20m spatial clustering against existing open sites
+      const sitesQuery = await query(`
+        SELECT id, latitude, longitude, backers_count as "reportCount", status 
+        FROM sites 
+        WHERE status = 'open'
+      `);
+
+      const existingSites: Site[] = sitesQuery.rows.map((row) => ({
+        id: row.id,
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        reportIds: [],
+        reportCount: Number(row.reportCount),
+        status: row.status,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+
+      const nearbySite = findNearbySite(latitude, longitude, existingSites, 20);
+      let siteId: string;
+      let isClustered = false;
+
+      if (nearbySite) {
+        // Group with existing site (Same-spot merge within 20m)
+        siteId = nearbySite.id;
+        isClustered = true;
+
+        await query(
+          `UPDATE sites 
+           SET backers_count = backers_count + 1, 
+               last_activity_at = CURRENT_TIMESTAMP 
+           WHERE id = $1`,
+          [siteId],
+        );
+      } else {
+        // Create brand new site hotspot
+        const newSiteResult = await query(
+          `INSERT INTO sites (waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 1, 'open')
+           RETURNING id`,
+          [wasteType, latitude, longitude, boundary.ward, boundary.mla, boundary.mp],
+        );
+        siteId = newSiteResult.rows[0].id;
+      }
+
+      // 4. Insert report linked to site
+      const insertReportQuery = `
+        INSERT INTO reports (site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, created_at
+      `;
+
+      const reportResult = await query(insertReportQuery, [
+        siteId,
         photoUrl,
         wasteType,
         latitude,
@@ -44,15 +95,18 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
         aiResult.is_waste ? "verified" : "needs_review",
       ]);
 
-      const createdReport = result.rows[0];
+      const createdReport = reportResult.rows[0];
       return reply.status(201).send({
         success: true,
         report: createdReport,
+        siteId,
+        clustered: isClustered,
+        boundary,
         aiVerification: aiResult,
       });
     } catch (err: unknown) {
-      request.log.error(err, "Failed to insert report into database");
-      // If DB is offline during local test, return clean mock response
+      request.log.error(err, "Database error during report ingestion");
+      // Fallback response for offline mock mode
       return reply.status(201).send({
         success: true,
         report: {
@@ -64,8 +118,11 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
           status: aiResult.is_waste ? "verified" : "needs_review",
           created_at: new Date().toISOString(),
         },
+        siteId: "mock-site-1",
+        clustered: false,
+        boundary,
         aiVerification: aiResult,
-        warning: "Database query skipped or offline",
+        warning: "Database offline",
       });
     }
   });

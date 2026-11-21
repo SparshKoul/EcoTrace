@@ -1,0 +1,60 @@
+import type { FastifyPluginAsync } from "fastify";
+import { query } from "../db/pool.js";
+
+export const siteRoutes: FastifyPluginAsync = async (app) => {
+  // GET /sites - Query active waste hotspots for the frontend map
+  app.get("/sites", async (request, reply) => {
+    const { status, minLat, maxLat, minLon, maxLon } = request.query as {
+      status?: string;
+      minLat?: string;
+      maxLat?: string;
+      minLon?: string;
+      maxLon?: string;
+    };
+
+    let sql = `
+      SELECT id, status, waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, first_reported_at, last_activity_at
+      FROM sites
+      WHERE 1=1
+    `;
+    const params: unknown[] = [];
+
+    if (status) {
+      params.push(status);
+      sql += ` AND status = $${params.length}`;
+    }
+
+    if (minLat && maxLat && minLon && maxLon) {
+      params.push(Number(minLat), Number(maxLat), Number(minLon), Number(maxLon));
+      sql += ` AND latitude >= $${params.length - 3} AND latitude <= $${params.length - 2} AND longitude >= $${params.length - 1} AND longitude <= $${params.length}`;
+    }
+
+    sql += ` ORDER BY last_activity_at DESC LIMIT 100`;
+
+    try {
+      const result = await query(sql, params);
+      return reply.send({ count: result.rows.length, sites: result.rows });
+    } catch (err: unknown) {
+      request.log.warn(err, "Database offline, returning empty sites");
+      return reply.send({ count: 0, sites: [] });
+    }
+  });
+
+  // GET /sites/:id - Fetch single site details
+  app.get("/sites/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    try {
+      const siteResult = await query(`SELECT * FROM sites WHERE id = $1`, [id]);
+      if (siteResult.rows.length === 0) {
+        return reply.status(404).send({ error: "Site not found" });
+      }
+
+      const reportsResult = await query(`SELECT * FROM reports WHERE site_id = $1 ORDER BY created_at DESC`, [id]);
+      return reply.send({ site: siteResult.rows[0], reports: reportsResult.rows });
+    } catch (err: unknown) {
+      request.log.error(err, "Failed to fetch site");
+      return reply.status(500).send({ error: "Database error" });
+    }
+  });
+};

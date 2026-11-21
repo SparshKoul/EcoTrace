@@ -3,6 +3,7 @@ import fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { checkDbHealth } from "./db/pool.js";
 import { reportRoutes } from "./routes/reports.js";
+import { siteRoutes } from "./routes/sites.js";
 
 export function buildServer(): FastifyInstance {
   const app = fastify({
@@ -43,6 +44,7 @@ export function buildServer(): FastifyInstance {
 
   // Register feature routes
   app.register(reportRoutes, { prefix: "/api" });
+  app.register(siteRoutes, { prefix: "/api" });
 
   return app;
 }
