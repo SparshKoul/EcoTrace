@@ -1,13 +1,15 @@
-import "dotenv/config";
+import { env } from "./config/env.js";
 import fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import { checkDbHealth } from "./db/pool.js";
+import { reportRoutes } from "./routes/reports.js";
 
 export function buildServer(): FastifyInstance {
   const app = fastify({
     logger: {
-      level: process.env.LOG_LEVEL || "info",
+      level: env.LOG_LEVEL,
       transport:
-        process.env.NODE_ENV !== "production"
+        env.NODE_ENV !== "production"
           ? {
               target: "pino-pretty",
               options: {
@@ -20,29 +22,35 @@ export function buildServer(): FastifyInstance {
     },
   });
 
-  // Enable CORS for frontend integration
+  // Enable CORS
   app.register(cors, {
-    origin: true,
+    origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
-  // Health check endpoint
+  // Health check endpoint (including DB connectivity probe)
   app.get("/health", async () => {
+    const dbStatus = await checkDbHealth();
     return {
       status: "ok",
       service: "ecotrace-backend",
+      environment: env.NODE_ENV,
+      database: dbStatus,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     };
   });
+
+  // Register feature routes
+  app.register(reportRoutes, { prefix: "/api" });
 
   return app;
 }
 
 async function start() {
   const app = buildServer();
-  const port = Number(process.env.PORT) || 8000;
-  const host = process.env.HOST || "0.0.0.0";
+  const port = env.PORT;
+  const host = env.HOST;
 
   try {
     await app.listen({ port, host });
