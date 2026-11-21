@@ -23,6 +23,7 @@ interface AnalysisResponse {
   readonly public_audit_summary?: string;
   readonly sanitized_url?: string | null;
   readonly pii_blur_count?: number;
+  readonly model_used?: string;
 }
 
 const valueOf = (input: unknown): string | undefined => {

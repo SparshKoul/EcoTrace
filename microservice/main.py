@@ -127,9 +127,9 @@ def _mock_analysis() -> AnalysisResult:
     )
 
 
-def analyse_with_gemini(image_bytes: bytes, mime_type: str) -> AnalysisResult:
+def analyse_with_gemini(image_bytes: bytes, mime_type: str) -> tuple[AnalysisResult, str]:
     if USE_MOCK_AI:
-        return _mock_analysis()
+        return _mock_analysis(), "mock"
 
     client = _client()
     image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
@@ -147,7 +147,7 @@ def analyse_with_gemini(image_bytes: bytes, mime_type: str) -> AnalysisResult:
                 config=config,
             )
             payload = json.loads(response.text or "{}")
-            return AnalysisResult.model_validate(payload)
+            return AnalysisResult.model_validate(payload), model
         except Exception as exc:  # try the next available model
             errors.append(f"{model}: {type(exc).__name__}: {exc}")
     raise RuntimeError("All Gemini models failed. " + " | ".join(errors[:3]))
@@ -204,7 +204,7 @@ async def analyse(
     raw_path.write_bytes(image_bytes)
 
     try:
-        analysis = analyse_with_gemini(image_bytes, file.content_type or "image/jpeg")
+        analysis, model_used = analyse_with_gemini(image_bytes, file.content_type or "image/jpeg")
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -214,6 +214,7 @@ async def analyse(
             "report_id": report_id,
             "is_valid_trash": False,
             "rejection_reason": analysis.rejection_reason or "Not a valid outdoor waste report.",
+            "model_used": model_used,
             "sanitized_path": None,
             "pii_blur_count": 0,
         }
@@ -235,4 +236,5 @@ async def analyse(
         "sanitized_path": str(clean_path),
         "sanitized_url": f"/public/{clean_path.name}",
         "pii_blur_count": blurred,
+        "model_used": model_used,
     }

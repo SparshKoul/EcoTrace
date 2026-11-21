@@ -13,7 +13,7 @@ Alternative if you later want offline/edge inference: Ultralytics YOLOv8 for was
 
 ### Models
 
-`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL` and `GEMINI_EXTRA_MODELS` are tried in order. Defaults follow the build spec (`gemini-3.8-flash` → `gemini-3.5-flash-lite`) and then known-good fallbacks (`gemini-2.5-flash`, `gemini-2.0-flash`). If your API key/region does not expose the first names, set the env vars to a model you do have — no code change needed.
+`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL` and `GEMINI_EXTRA_MODELS` are tried in order. Defaults follow the build spec (`gemini-3.8-flash` → `gemini-3.5-flash-lite`) and then known-good fallbacks (`gemini-2.5-flash`, `gemini-2.0-flash`). Responses include `model_used` so you can see which one answered. The configured key has been verified against `gemini-3.8-flash` successfully. If a different key/region does not expose those names, set the env vars to a model you do have — no code change needed.
 
 ## Run
 
