@@ -55,7 +55,8 @@ The dev server is on port `5173`. With the default `.env.example` values the app
 
 | Script | What it does |
 | :--- | :--- |
-| `npm run dev` | Start the Vite dev server on port 5173 |
+| `npm run dev` | Start the Vite dev server on port 5173 (also reachable on the LAN) |
+| `npm run dev:https` | Start it over HTTPS with a local dev certificate — required for the browser location prompt on other devices |
 | `npm run build` | `tsc --noEmit` type-check followed by a production Vite bundle into `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm test` | Run the Vitest suite once |
@@ -196,12 +197,14 @@ frontend/
 
 ### Current location
 
-- On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which prompts the browser for location permission), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. **"Not now"** keeps the default view.
+- On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which triggers the browser's own **"Allow location?"** prompt), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. This button uses **exact device location only** — it never substitutes an IP-derived position. **"Not now"** keeps the default view.
 - A **"◎ My location"** button stays in the top overlay so the citizen can re-centre at any time.
 - The one-shot request lives in `useGps.locate()` and is exposed through `AppContext`; the continuous `watchPosition` used by capture gates is separate.
 - If location is denied, unavailable, or blocked by an embedded preview / non-HTTPS context, the prompt shows the **specific reason inline** with **Try again**, **Use approximate location**, and **Keep Chitkara view** actions — no dead-end toast.
-- **IP fallback for remote visitors:** browsers only expose device GPS on `localhost` or HTTPS. If a visitor opens the app over plain HTTP on a LAN IP (or inside a preview iframe), the "Use my current location" action automatically falls back to a public IP lookup (`ipwho.is`, with `ipapi.co` as backup) and centres the map on their city. The map shows an **"Approximate · city"** chip, and the toast says the position is city-level — it is never used for reporting, because capture gates still require a ≤ 30 m device fix.
-- The Vite dev server is configured with `host: true`, so other devices on the same Wi-Fi can open `http://<your-lan-ip>:5173`. For **precise** GPS on those devices, serve the app over HTTPS (e.g. a Cloudflare/ngrok tunnel); then the browser permission flow works normally.
+- **Exact GPS requires a secure context.** Browsers only show the "Allow location?" prompt on `localhost` or HTTPS — this is a browser security rule, not an app setting. If the page is opened over plain `http://<ip>` or in an iframe without `allow="geolocation"`, no code can obtain the device's exact position. The prompt then explains the specific reason inline.
+- **For visitors on other devices:** run `npm run dev:https`. Open the printed `https://<your-lan-ip>:5173` URL on their device, accept the local development certificate warning once, then tap **Use my current location** — the browser's permission prompt appears and the map centres on the device's exact GPS position. A public HTTPS tunnel (`npx cloudflared tunnel --url http://localhost:5173` or `npx ngrok http 5173`) works too.
+- If the user previously chose **Block**, Chrome will not ask again. Reset it via the tune/lock icon beside the URL → **Site settings → Location → Allow**, or in Chrome Settings → Privacy and security → Site settings → Location.
+- **Optional manual fallback:** only after the exact request fails, a separate **Use approximate location** button appears. It uses a public IP lookup (`ipwho.is`, backup `ipapi.co`) to centre the map near their city, with an **"Approximate · city"** chip. This is city-level only and is never accepted for reporting — capture gates still require a ≤ 30 m device fix.
 - Mock sites are generated around the same default centre, so the pilot view always has sample reports before a real backend is connected.
 
 ### Markers and severity

@@ -25,7 +25,7 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
   const awayFromSamples = focusPoint !== null && distanceMeters(focusPoint, PILOT_CENTRE) > 5_000;
 
-  const applyApprox = (result: IpLocateResult, fallbackError: string | null) => {
+  const applyApprox = (result: IpLocateResult) => {
     if (result.location) {
       const point = { lat: result.location.lat, lng: result.location.lng };
       setUserPoint(point);
@@ -34,7 +34,7 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       setAskForLocation(false);
       notify(`Map centred near ${result.location.label || 'your area'} from your IP address — approximate, city level.`);
     } else {
-      setLocationError([fallbackError, result.error].filter(Boolean).join(' '));
+      setLocationError(result.error ?? 'Could not look up your approximate location.');
     }
   };
 
@@ -43,27 +43,25 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
     setLocationError(null);
     const result = await locateByIp();
     setLocating(false);
-    applyApprox(result, null);
+    applyApprox(result);
   };
 
+  /** Exact device location only — this button never substitutes an IP-derived position. */
   const useMyLocation = async () => {
     setLocating(true);
     setLocationError(null);
     const result = await locate();
+    setLocating(false);
     if (result.fix) {
       const point = { lat: result.fix.lat, lng: result.fix.lng };
       setUserPoint(point);
       setFocusPoint(point);
       setApproxLabel(null);
       setAskForLocation(false);
-      setLocating(false);
       notify(`Map centred on your location (±${Math.round(result.fix.accuracyM)} m).`);
-      return;
+    } else {
+      setLocationError(result.error ?? 'Location is unavailable right now.');
     }
-    // A visitor on http://<ip> or an embedded preview cannot use device GPS. Fall back to IP.
-    const approx = await locateByIp();
-    setLocating(false);
-    applyApprox(approx, result.error);
   };
 
   return (
@@ -101,8 +99,8 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
         <div className="pointer-events-auto absolute inset-x-4 top-36 z-[900] mx-auto max-w-md rounded-2xl border-2 border-ink bg-surface p-4 shadow-[0_4px_0_#221c15]">
           <p className="font-display text-lg font-bold">See sites near you?</p>
           <p className="mt-1 text-sm text-muted">
-            We'll ask your device for its current location and centre the map there. If GPS is unavailable (for example
-            on an HTTP link), we'll use your IP address to centre it near your city instead.
+            We'll ask your device for its exact location and centre the map there. This needs the browser's location
+            permission (available on localhost or HTTPS).
           </p>
           {locationError && (
             <p role="alert" className="mt-3 rounded-xl bg-[#fde8e6] px-3 py-2 text-sm font-semibold text-[#b3261e]">
