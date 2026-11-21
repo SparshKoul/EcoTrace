@@ -1,0 +1,39 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Secrets & local config ---
+.env
+.env.*
+!.env.example
+
+# --- Model weights (do not commit large binaries) ---
+weights/*.pt
+weights/*.onnx
+weights/*.pth
+weights/*.ckpt
+*.pt
+*.onnx
+*.pth
+
+# --- Datasets (large; keep only configs/annotations if needed) ---
+datasets/**/images/
+datasets/**/labels/
+
+# --- Runtime storage / logs ---
+*.log
+logs/
+/var/lib/ecotrace/
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store

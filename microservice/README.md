@@ -1,0 +1,193 @@
+# EcoTrace AI/ML Microservice
+
+FastAPI microservice that verifies environmental-waste reports for **EcoTrace**.
+It accepts uploaded images, runs computer-vision / AWS AI analysis, and returns a
+structured JSON verdict to the Node.js backend.
+
+This service owns **no** user auth, **no** application database, and **no**
+report storage — it is a stateless verification engine.
+
+## Status — Phase 1 (MVP)
+
+Implemented:
+
+- FastAPI app factory with lifespan model loading, CORS, internal service auth
+  middleware, request timing header
+- `GET /health`, `GET /health/ready`, `GET /api/v1/models`
+- `POST /api/v1/verify` (multipart: `file`, `report_id`, `report_type`,
+  optional `latitude`/`longitude`)
+- `POST /api/v1/detect` (YOLO-only detection)
+- YOLO object-detection component (Ultralytics, CUDA→CPU fallback,
+  graceful degradation when weights are unavailable)
+- Upload validation pipeline: size cap, MIME allow-list, magic-byte sniffing,
+  pixel-count guard, safe decode to RGB
+- Pydantic request/response schemas, structured error envelopes
+- Unit tests with a fake detector (no weights / AWS credentials required)
+
+Planned (later phases, one commit each):
+
+- **Phase 2** — Amazon Rekognition (moderation, labels, faces, text) + privacy
+  blurring pipeline (faces & license plates) with separate original/processed storage
+- **Phase 3** — Amazon Bedrock vision judgement (Nova Lite, validated Pydantic
+  responses, bounded retries)
+- **Phase 4** — SigLIP 2 embeddings, classification, duplicate detection
+- **Phase 5** — ML decision engine (rule-based aggregation; logistic-regression
+  stacker when labelled data exists)
+- **Phase 6** — batch endpoint, concurrency limits, Docker, docs
+
+## Architecture
+
+```
+Node.js backend ──HTTP──▶ FastAPI (/api/v1/verify)
+                            │
+                            ├── image validation (size/MIME/signature/pixels)
+                            ├── privacy pass (Phase 2: blur faces/plates)
+                            ├── YOLO detector ─────────┐
+                            ├── Rekognition ────────────┤ parallel,
+                            ├── SigLIP 2 ───────────────┤ bounded
+                            ├── Bedrock vision ─────────┘ concurrency
+                            └── decision engine ─▶ {status, confidence, reasons}
+```
+
+## Directory structure
+
+```
+microservice/
+├── app/
+│   ├── main.py                 # app factory, lifespan, middleware, routers
+│   ├── routes/                  # health, models, verify
+│   ├── models/                  # yolo_detector (+ siglip_classifier, ensemble later)
+│   ├── services/                # verification_service, image_processing
+│   │                            # (+ rekognition, bedrock, privacy later)
+│   ├── schemas/                 # Pydantic request/response models
+│   ├── core/                    # config, logging (redaction), model_loader
+│   └── utils/                   # image_utils (validation/decode)
+├── weights/                     # local checkpoints (git-ignored)
+├── datasets/                     # waste datasets (git-ignored bulk)
+├── training/                     # train_yolo.py, ... (later phases)
+├── tests/                        # pytest suite (mocked, no AWS needed)
+├── requirements.txt
+├── pytest.ini
+├── .env.example
+└── .gitignore
+```
+
+## Installation
+
+```bash
+cd microservice
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+GPU (CUDA): install the matching torch build first, e.g.
+`pip install torch --index-url https://download.pytorch.org/whl/cu124`, then
+`pip install -r requirements.txt`.
+
+## Environment setup
+
+```bash
+cp .env.example .env       # then edit values; never commit .env
+```
+
+## Running
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# Interactive docs: http://localhost:8000/docs
+```
+
+## API (Phase 1)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Liveness |
+| GET | `/health/ready` | Per-component readiness |
+| GET | `/api/v1/models` | Loaded-model inventory |
+| POST | `/api/v1/verify` | Full verification (Phase 1: YOLO) |
+| POST | `/api/v1/detect` | Detection only |
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/verify \
+  -F file=@garbage.jpg \
+  -F report_id=ECO-001 \
+  -F report_type=garbage_dump
+```
+
+Response (actual outputs — never hardcoded example values):
+
+```json
+{
+  "success": true,
+  "report_id": "ECO-001",
+  "status": "REVIEW_REQUIRED",
+  "is_waste_detected": true,
+  "waste_category": "garbage_dump",
+  "detections": [
+    {"label": "bottle", "class_id": 39, "confidence": 0.91, "bbox": [100, 120, 300, 400]}
+  ],
+  "rekognition": {"available": false},
+  "siglip": {"available": false},
+  "bedrock": {"available": false},
+  "decision": {"result": "REVIEW_REQUIRED", "confidence": null, "reasons": ["Human verification required"]},
+  "model_versions": {"detector": "yolo26n.pt", "classifier": null},
+  "error": null
+}
+```
+
+Error envelope (consistent for 400/413/415/422/5xx):
+
+```json
+{"success": false, "error": "mime_mismatch", "detail": "..."}
+```
+
+If `INTERNAL_SERVICE_KEY` is set, all non-health endpoints require the header
+`X-Internal-Service-Key: <value>` (HTTP 401 otherwise).
+
+## YOLO model setup
+
+Phase 1 uses a pretrained general-purpose checkpoint (`yolo26n.pt` by default,
+auto-downloaded by Ultralytics on first load). **It is not a specialised waste
+detector** — it labels COCO classes (bottle, backpack, ...). Waste-specific
+fine-tuning arrives with `training/train_yolo.py` (later phase); drop resulting
+weights into `weights/` (git-ignored) and set `YOLO_MODEL_PATH`.
+
+If weights are missing or CUDA fails, the service degrades gracefully: the
+detector reports `available: false` and verification returns
+`REVIEW_REQUIRED`/`REJECTED` with an explanatory reason — never a fake verdict.
+
+## Testing
+
+```bash
+cd microservice
+pytest                # unit tests: no AWS creds, no model downloads
+```
+
+Later phases add `-m real_aws` integration tests that are opt-in only.
+
+## Docker
+
+See `Dockerfile` (added in Phase 6).
+
+## Main backend integration (Node.js)
+
+```ts
+const form = new FormData();
+form.append("file", new Blob([imageBytes], { type: "image/jpeg" }), "garbage.jpg");
+form.append("report_id", "ECO-001");
+form.append("report_type", "garbage_dump");
+
+const res = await fetch(`${MICROSERVICE_URL}/api/v1/verify`, {
+  method: "POST",
+  headers: { "X-Internal-Service-Key": process.env.INTERNAL_SERVICE_KEY! },
+  body: form,
+  signal: AbortSignal.timeout(30_000),
+});
+const result = await res.json(); // VerifyResponse schema
+```
+
+Docker networking: backend reaches the service at `http://microservice:8000`
+inside a shared compose network.
