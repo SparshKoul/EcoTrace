@@ -8,6 +8,18 @@ export interface LocateResult {
   readonly error: string | null;
 }
 
+/** City-level location derived from the public IP, used when the browser will not share GPS. */
+export interface ApproxLocation {
+  readonly lat: number;
+  readonly lng: number;
+  readonly label: string;
+}
+
+export interface IpLocateResult {
+  readonly location: ApproxLocation | null;
+  readonly error: string | null;
+}
+
 export interface GpsState {
   readonly fix: GpsFix | null;
   readonly denied: boolean;
@@ -16,6 +28,8 @@ export interface GpsState {
   readonly refresh: () => void;
   /** Explicit one-shot request used by the "Use my current location" action. */
   readonly locate: () => Promise<LocateResult>;
+  /** City-level fallback for visitors on HTTP/IP URLs where the browser blocks geolocation. */
+  readonly locateByIp: () => Promise<IpLocateResult>;
 }
 
 const toFix = (position: GeolocationPosition): GpsFix => {
@@ -81,6 +95,54 @@ export function useGps(): GpsState {
     });
   }, []);
 
+  const locateByIp = useCallback(async (): Promise<IpLocateResult> => {
+    const providers: readonly (() => Promise<ApproxLocation | null>)[] = [
+      async () => {
+        const response = await fetch('https://ipwho.is/', { cache: 'no-store' });
+        if (!response.ok) return null;
+        const data = await response.json() as {
+          success?: boolean; latitude?: number; longitude?: number; city?: string; region?: string; country?: string;
+        };
+        const { latitude, longitude } = data;
+        if (data.success === false || typeof latitude !== 'number' || typeof longitude !== 'number'
+          || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+        return {
+          lat: latitude,
+          lng: longitude,
+          label: [data.city, data.region, data.country].filter(Boolean).join(', '),
+        };
+      },
+      async () => {
+        const response = await fetch('https://ipapi.co/json/', { cache: 'no-store' });
+        if (!response.ok) return null;
+        const data = await response.json() as {
+          latitude?: number; longitude?: number; city?: string; region?: string; country_name?: string; error?: boolean;
+        };
+        const { latitude, longitude } = data;
+        if (data.error || typeof latitude !== 'number' || typeof longitude !== 'number'
+          || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+        return {
+          lat: latitude,
+          lng: longitude,
+          label: [data.city, data.region, data.country_name].filter(Boolean).join(', '),
+        };
+      },
+    ];
+
+    for (const provider of providers) {
+      try {
+        const location = await provider();
+        if (location) return { location, error: null };
+      } catch {
+        // Try the next provider; a blocked or offline service must not dead-end the UI.
+      }
+    }
+    return {
+      location: null,
+      error: 'Could not look up your approximate location. Check your connection and try again.',
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setDenied(true);
@@ -109,5 +171,5 @@ export function useGps(): GpsState {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [nonce]);
 
-  return { fix, denied, loading, error, refresh, locate };
+  return { fix, denied, loading, error, refresh, locate, locateByIp };
 }

@@ -4,7 +4,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 5173 },
+  // host: true exposes the dev server on the LAN so other devices can open the app.
+  // Device GPS needs HTTPS, but the IP-based fallback still centres their map on plain HTTP.
+  server: { host: true, port: 5173 },
   build: { chunkSizeWarningLimit: 900 },
   test: {
     environment: 'jsdom',

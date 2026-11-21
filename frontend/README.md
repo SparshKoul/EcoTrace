@@ -199,7 +199,9 @@ frontend/
 - On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which prompts the browser for location permission), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. **"Not now"** keeps the default view.
 - A **"◎ My location"** button stays in the top overlay so the citizen can re-centre at any time.
 - The one-shot request lives in `useGps.locate()` and is exposed through `AppContext`; the continuous `watchPosition` used by capture gates is separate.
-- If location is denied, unavailable, or blocked by an embedded preview / non-HTTPS context, the prompt shows the **specific reason inline** with **Try again** and **Keep Chitkara view** actions — no dead-end toast. Browsers only expose geolocation on `localhost` or HTTPS, and embedded previews often withhold it entirely.
+- If location is denied, unavailable, or blocked by an embedded preview / non-HTTPS context, the prompt shows the **specific reason inline** with **Try again**, **Use approximate location**, and **Keep Chitkara view** actions — no dead-end toast.
+- **IP fallback for remote visitors:** browsers only expose device GPS on `localhost` or HTTPS. If a visitor opens the app over plain HTTP on a LAN IP (or inside a preview iframe), the "Use my current location" action automatically falls back to a public IP lookup (`ipwho.is`, with `ipapi.co` as backup) and centres the map on their city. The map shows an **"Approximate · city"** chip, and the toast says the position is city-level — it is never used for reporting, because capture gates still require a ≤ 30 m device fix.
+- The Vite dev server is configured with `host: true`, so other devices on the same Wi-Fi can open `http://<your-lan-ip>:5173`. For **precise** GPS on those devices, serve the app over HTTPS (e.g. a Cloudflare/ngrok tunnel); then the browser permission flow works normally.
 - Mock sites are generated around the same default centre, so the pilot view always has sample reports before a real backend is connected.
 
 ### Markers and severity
@@ -270,7 +272,7 @@ The shared `EvidenceAnalysis` type in `src/types.ts` documents the response shap
 ## Testing and verification
 
 ```bash
-npm test        # 17 tests across 4 files
+npm test        # 19 tests across 4 files
 npm run build   # tsc --noEmit && vite build
 npm run lint    # eslint .
 ```
@@ -281,6 +283,7 @@ All three commands pass in this commit. Tests cover:
 - Capture gates: GPS accuracy > 30 m blocks, recorder support, missing-bin GPS requirement, sign-in and offline cases, waste-type requirement
 - Score quorum locking and all three score formulas
 - `useGps.locate()` with mocked geolocation: success returns a fix, denial returns an actionable error, insecure context refuses with an HTTPS message
+- `useGps.locateByIp()` with mocked fetch: city-level fallback result, and a clear error when all IP providers fail
 
 ---
 

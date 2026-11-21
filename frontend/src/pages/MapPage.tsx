@@ -6,12 +6,13 @@ import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { GpsBadge } from '../components/ui/GpsBadge';
 import { PILOT_CENTRE, RULES, TYPE_COLOR, TYPE_LABEL } from '../config/rules';
+import type { IpLocateResult } from '../hooks/useGps';
 import type { Tab } from '../navigation';
 import { useApp } from '../state/AppContext';
 import type { GeoPoint, Site } from '../types';
 
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { sites, areas, loading, locate, notify } = useApp();
+  const { sites, areas, loading, locate, locateByIp, notify } = useApp();
   const [complaintSiteId, setComplaintSiteId] = useState<string | null>(null);
   const [localitySite, setLocalitySite] = useState<Site | null>(null);
   const [focusPoint, setFocusPoint] = useState<GeoPoint | null>(null);
@@ -19,21 +20,47 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [locating, setLocating] = useState(false);
   const [askForLocation, setAskForLocation] = useState(true);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [approxLabel, setApproxLabel] = useState<string | null>(null);
+
+  const applyApprox = (result: IpLocateResult, fallbackError: string | null) => {
+    if (result.location) {
+      const point = { lat: result.location.lat, lng: result.location.lng };
+      setUserPoint(point);
+      setFocusPoint(point);
+      setApproxLabel(result.location.label || 'your area');
+      setAskForLocation(false);
+      notify(`Map centred near ${result.location.label || 'your area'} from your IP address — approximate, city level.`);
+    } else {
+      setLocationError([fallbackError, result.error].filter(Boolean).join(' '));
+    }
+  };
+
+  const useApproxLocation = async () => {
+    setLocating(true);
+    setLocationError(null);
+    const result = await locateByIp();
+    setLocating(false);
+    applyApprox(result, null);
+  };
 
   const useMyLocation = async () => {
     setLocating(true);
     setLocationError(null);
     const result = await locate();
-    setLocating(false);
     if (result.fix) {
       const point = { lat: result.fix.lat, lng: result.fix.lng };
       setUserPoint(point);
       setFocusPoint(point);
+      setApproxLabel(null);
       setAskForLocation(false);
+      setLocating(false);
       notify(`Map centred on your location (±${Math.round(result.fix.accuracyM)} m).`);
-    } else {
-      setLocationError(result.error ?? 'Location is unavailable right now.');
+      return;
     }
+    // A visitor on http://<ip> or an embedded preview cannot use device GPS. Fall back to IP.
+    const approx = await locateByIp();
+    setLocating(false);
+    applyApprox(approx, result.error);
   };
 
   return (
@@ -50,6 +77,7 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <GpsBadge />
           <Chip tone="accent">{sites.length} sites on map</Chip>
+          {approxLabel && <Chip tone="warn">Approximate · {approxLabel}</Chip>}
           <button
             type="button"
             onClick={() => void useMyLocation()}
@@ -69,8 +97,8 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
         <div className="pointer-events-auto absolute inset-x-4 top-36 z-[900] mx-auto max-w-md rounded-2xl border-2 border-ink bg-surface p-4 shadow-[0_4px_0_#221c15]">
           <p className="font-display text-lg font-bold">See sites near you?</p>
           <p className="mt-1 text-sm text-muted">
-            We'll ask your device for its current location and centre the map there. You can stay on the Chitkara
-            University view instead.
+            We'll ask your device for its current location and centre the map there. If GPS is unavailable (for example
+            on an HTTP link), we'll use your IP address to centre it near your city instead.
           </p>
           {locationError && (
             <p role="alert" className="mt-3 rounded-xl bg-[#fde8e6] px-3 py-2 text-sm font-semibold text-[#b3261e]">
@@ -81,6 +109,11 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
             <Button variant="sun" onClick={() => void useMyLocation()} disabled={locating}>
               {locating ? 'Locating…' : locationError ? 'Try again' : 'Use my current location'}
             </Button>
+            {locationError && (
+              <Button variant="outline" onClick={() => void useApproxLocation()} disabled={locating}>
+                Use approximate location
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setAskForLocation(false)}>
               {locationError ? 'Keep Chitkara view' : 'Not now'}
             </Button>

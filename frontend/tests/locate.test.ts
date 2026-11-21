@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useGps } from '../src/hooks/useGps';
 
 const position = {
@@ -34,6 +34,7 @@ describe('useGps.locate', () => {
   afterEach(() => {
     Reflect.deleteProperty(navigator, 'geolocation');
     Reflect.deleteProperty(window, 'isSecureContext');
+    vi.unstubAllGlobals();
   });
 
   it('returns the current position when the browser grants it', async () => {
@@ -50,7 +51,7 @@ describe('useGps.locate', () => {
   });
 
   it('explains a permission denial instead of failing silently', async () => {
-    stubGeolocation((_success, failure) => failure(denied));
+    stubGeolocation((_success, failure) => failure?.(denied));
     const { result } = renderHook(() => useGps());
 
     let resolved: Awaited<ReturnType<ReturnType<typeof useGps>['locate']>> | undefined;
@@ -59,6 +60,39 @@ describe('useGps.locate', () => {
     expect(resolved?.fix).toBeNull();
     expect(resolved?.error).toContain('blocked');
     expect(result.current.denied).toBe(true);
+  });
+
+  it('centres the map from a public IP lookup when GPS is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        success: true,
+        latitude: 30.6799489,
+        longitude: 76.7221109,
+        city: 'Mohali',
+        region: 'Punjab',
+        country: 'India',
+      }),
+    })));
+
+    const { result } = renderHook(() => useGps());
+    let resolved: Awaited<ReturnType<ReturnType<typeof useGps>['locateByIp']>> | undefined;
+    await act(async () => { resolved = await result.current.locateByIp(); });
+
+    expect(resolved?.location?.lat).toBeCloseTo(30.6799);
+    expect(resolved?.location?.label).toContain('Mohali');
+    expect(resolved?.error).toBeNull();
+  });
+
+  it('reports a clear error when every IP provider fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })));
+
+    const { result } = renderHook(() => useGps());
+    let resolved: Awaited<ReturnType<ReturnType<typeof useGps>['locateByIp']>> | undefined;
+    await act(async () => { resolved = await result.current.locateByIp(); });
+
+    expect(resolved?.location).toBeNull();
+    expect(resolved?.error).toContain('approximate location');
   });
 
   it('refuses to ask on an insecure context and says why', async () => {
