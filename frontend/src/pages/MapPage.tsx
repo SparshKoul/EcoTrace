@@ -13,7 +13,7 @@ import { useApp } from '../state/AppContext';
 import type { GeoPoint, Site } from '../types';
 
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { sites, areas, loading, locate, locateByIp, notify } = useApp();
+  const { sites, areas, loading, locate, locateByIp, notify, backExistingSite } = useApp();
   const [complaintSiteId, setComplaintSiteId] = useState<string | null>(null);
   const [localitySite, setLocalitySite] = useState<Site | null>(null);
   const [focusPoint, setFocusPoint] = useState<GeoPoint | null>(null);
@@ -70,6 +70,7 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
         sites={sites}
         onOpenComplaint={setComplaintSiteId}
         onOpenScores={setLocalitySite}
+        onBackSite={backExistingSite}
         focusPoint={focusPoint}
         userPoint={userPoint}
       />

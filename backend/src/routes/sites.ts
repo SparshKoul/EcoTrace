@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { query } from "../db/pool.js";
+import { memory as phase3Memory } from "../services/phase3Store.js";
 
 export const siteRoutes: FastifyPluginAsync = async (app) => {
   // GET /sites - Query active waste hotspots for the frontend map
@@ -13,7 +14,7 @@ export const siteRoutes: FastifyPluginAsync = async (app) => {
     };
 
     let sql = `
-      SELECT id, status, waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, first_reported_at, last_activity_at
+      SELECT id, status, waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, COALESCE(severity, 0) AS severity, first_reported_at, last_activity_at
       FROM sites
       WHERE 1=1
     `;
@@ -35,8 +36,22 @@ export const siteRoutes: FastifyPluginAsync = async (app) => {
       const result = await query(sql, params);
       return reply.send({ count: result.rows.length, sites: result.rows });
     } catch (err: unknown) {
-      request.log.warn(err, "Database offline, returning empty sites");
-      return reply.send({ count: 0, sites: [] });
+      request.log.warn(err, "Database offline, returning in-memory sites");
+      const inMemory = phase3Memory.listAllSites().map((s) => ({
+        id: s.id,
+        status: s.status,
+        waste_type: s.wasteType,
+        latitude: s.latitude,
+        longitude: s.longitude,
+        ward_name: s.wardName,
+        mla_constituency: s.mla,
+        mp_constituency: s.mp,
+        backers_count: s.backersCount,
+        severity: s.severity,
+        first_reported_at: s.firstReportedAt,
+        last_activity_at: s.lastActivityAt,
+      }));
+      return reply.send({ count: inMemory.length, sites: inMemory });
     }
   });
 

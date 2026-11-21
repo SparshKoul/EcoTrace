@@ -8,13 +8,17 @@ import type {
   Site,
 } from '../types';
 import { computeAreaScores } from '../domain/scores';
-import { getToken } from './auth';
+import { getCurrentUserId, getToken } from './auth';
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const authHeaders = (): Record<string, string> => {
   const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const userId = getCurrentUserId();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(userId ? { 'x-user-id': userId } : {}),
+  };
 };
 
 /** The backend stores a photo URL, so a captured blob is sent as a data URL. */
@@ -276,4 +280,133 @@ export async function fetchComplaint(siteId: string): Promise<ComplaintLetter> {
     citations: letter.citations.map((citation) => citation.quote),
     generatedAt: letter.created_at,
   };
+}
+
+export interface BackSiteResult {
+  count: number;
+  needed: number;
+  verified: boolean;
+  escalated: boolean;
+  severity: number;
+  site_status: string;
+  newly_added: boolean;
+  just_verified: boolean;
+}
+
+export async function backSite(siteId: string, customUserId?: string): Promise<BackSiteResult> {
+  const userId = customUserId || getCurrentUserId() || 'anon-backer';
+  if (USE_MOCK_API) {
+    await wait(150);
+    return {
+      count: 2,
+      needed: 8,
+      verified: false,
+      escalated: false,
+      severity: 80,
+      site_status: 'open',
+      newly_added: true,
+      just_verified: false,
+    };
+  }
+  const response = await fetch(`${API_BASE_URL}/api/sites/${encodeURIComponent(siteId)}/backers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ userId }),
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not back this site.');
+  return data as unknown as BackSiteResult;
+}
+
+export interface VoteResult {
+  site_id: string;
+  tally: { confirm: number; reject: number; cleaned: number };
+  distance_m: number;
+  backers: { count: number; needed: number; verified: boolean } | null;
+  site_rejected: boolean;
+}
+
+export async function voteSite(
+  siteId: string,
+  vote: 'confirm' | 'reject' | 'cleaned',
+  latitude: number,
+  longitude: number,
+  customUserId?: string,
+): Promise<VoteResult> {
+  const userId = customUserId || getCurrentUserId() || 'anon-voter';
+  if (USE_MOCK_API) {
+    await wait(150);
+    return {
+      site_id: siteId,
+      tally: { confirm: 1, reject: 0, cleaned: 0 },
+      distance_m: 5,
+      backers: null,
+      site_rejected: false,
+    };
+  }
+  const response = await fetch(`${API_BASE_URL}/api/sites/${encodeURIComponent(siteId)}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ userId, vote, latitude, longitude }),
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Vote could not be cast.');
+  return data as unknown as VoteResult;
+}
+
+export async function submitCleanup(
+  siteId: string,
+  afterPhotoBlob: Blob,
+  latitude: number,
+  longitude: number,
+  accuracyM?: number,
+  customUserId?: string,
+): Promise<{ cleanup_id: string; site_id: string; status: string; site_status: string; distance_m: number }> {
+  const userId = customUserId || getCurrentUserId() || 'anon-cleaner';
+  const afterPhotoUrl = await blobToDataUrl(afterPhotoBlob);
+  const response = await fetch(`${API_BASE_URL}/api/sites/${encodeURIComponent(siteId)}/cleanup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ afterPhotoUrl, userId, latitude, longitude, accuracyM }),
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Cleanup claim could not be submitted.');
+  return data as unknown as { cleanup_id: string; site_id: string; status: string; site_status: string; distance_m: number };
+}
+
+export async function fetchSiteNotes(siteId: string): Promise<{ id: string; content: string; created_at: string }[]> {
+  const response = await fetch(`${API_BASE_URL}/api/sites/${encodeURIComponent(siteId)}/notes`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) return [];
+  const data = await response.json().catch(() => ({ notes: [] })) as { notes: { id: string; content: string; created_at: string }[] };
+  return data.notes || [];
+}
+
+export async function addSiteNote(siteId: string, content: string, customUserId?: string): Promise<{ id: string; content: string }> {
+  const userId = customUserId || getCurrentUserId() || 'anon-note';
+  const response = await fetch(`${API_BASE_URL}/api/sites/${encodeURIComponent(siteId)}/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ userId, content }),
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Note could not be saved.');
+  return data as unknown as { id: string; content: string };
+}
+
+export async function fetchShareCard(siteId: string): Promise<{ siteId: string; shareUrl: string; title: string; summary: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/share/sites/${encodeURIComponent(siteId)}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) throw new Error('Could not generate share link.');
+  return response.json() as Promise<{ siteId: string; shareUrl: string; title: string; summary: string }>;
+}
+
+export async function fetchCityRankings(cityId: string): Promise<{ city: string; count: number; rankings: unknown[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/rankings/city/${encodeURIComponent(cityId)}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) return { city: cityId, count: 0, rankings: [] };
+  return response.json() as Promise<{ city: string; count: number; rankings: unknown[] }>;
 }

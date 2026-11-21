@@ -10,6 +10,7 @@ interface SiteMapProps {
   readonly sites: readonly Site[];
   readonly onOpenComplaint: (siteId: string) => void;
   readonly onOpenScores: (site: Site) => void;
+  readonly onBackSite?: (siteId: string) => void;
   /** When set, the map flies here — used after the citizen shares their live location. */
   readonly focusPoint: GeoPoint | null;
   /** The citizen's last known position, drawn as a blue user dot. */
@@ -31,7 +32,7 @@ interface Cluster {
   readonly sites: readonly Site[];
 }
 
-export function SiteMap({ sites, onOpenComplaint, onOpenScores, focusPoint, userPoint }: SiteMapProps) {
+export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focusPoint, userPoint }: SiteMapProps) {
   const [zoom, setZoom] = useState(12);
   const [map, setMap] = useState<L.Map | null>(null);
 
@@ -123,18 +124,27 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, focusPoint, user
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
                       type="button"
-                      className="rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-white"
+                      className="rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-white hover:opacity-90"
                       onClick={() => onOpenComplaint(representative.id)}
                     >
                       View complaint draft
                     </button>
                     <button
                       type="button"
-                      className="rounded-full border border-ink px-3 py-1.5 text-xs font-bold"
+                      className="rounded-full border border-ink px-3 py-1.5 text-xs font-bold hover:bg-tile"
                       onClick={() => onOpenScores(representative)}
                     >
                       Locality scores
                     </button>
+                    {onBackSite && (
+                      <button
+                        type="button"
+                        className="rounded-full border-2 border-accent bg-accent-soft px-3 py-1.5 text-xs font-bold text-accent hover:bg-accent hover:text-white transition-colors"
+                        onClick={() => onBackSite(representative.id)}
+                      >
+                        ＋ Back site ({representative.reportCount})
+                      </button>
+                    )}
                   </div>
                 </div>
               </Popup>

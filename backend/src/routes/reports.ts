@@ -5,6 +5,7 @@ import { aiVerifyClient } from "../services/ai/verifyClient.js";
 import { findNearbySite, type Site } from "../services/sites/siteMerger.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { phase4Memory } from "../services/phase4Store.js";
+import { memory as phase3Memory } from "../services/phase3Store.js";
 import { getRequestUser } from "../services/auth/requestUser.js";
 
 const createReportSchema = z.object({
@@ -134,9 +135,27 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       // Fallback response for offline mock mode
       const fallbackId = "mock-" + Date.now();
       const fallbackStatus = aiResult.is_waste ? "verified" : "needs_review";
+      const fallbackSiteId = "site-" + Date.now().toString(36);
+      phase3Memory.saveSite({
+        id: fallbackSiteId,
+        status: "open",
+        cleanupStatus: "none",
+        verification: "unverified",
+        severity: 75,
+        latitude,
+        longitude,
+        wasteType,
+        wardName: boundary.ward.name,
+        mla: boundary.mla.constituencyName,
+        mp: boundary.mp.constituencyName,
+        backersCount: 1,
+        afterPhotoUrl: photoUrl,
+        firstReportedAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
+      });
       phase4Memory.saveReport({
         id: fallbackId,
-        site_id: "mock-site-1",
+        site_id: fallbackSiteId,
         user_id: userId,
         photo_url: photoUrl,
         waste_type: wasteType,
@@ -157,7 +176,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
           user_id: userId ?? null,
           created_at: new Date().toISOString(),
         },
-        siteId: "mock-site-1",
+        siteId: fallbackSiteId,
         clustered: false,
         boundary,
         aiVerification: aiResult,

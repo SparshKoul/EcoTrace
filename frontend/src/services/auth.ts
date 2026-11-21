@@ -3,6 +3,7 @@
 import { API_BASE_URL } from '../config/rules';
 
 const TOKEN_KEY = 'ecotrace.access_token';
+const USER_ID_KEY = 'ecotrace.user_id';
 
 export interface AuthUser {
   readonly id: string;
@@ -20,12 +21,19 @@ export function getToken(): string | null {
   return isBrowser() ? window.localStorage.getItem(TOKEN_KEY) : null;
 }
 
+export function getCurrentUserId(): string | null {
+  return isBrowser() ? window.localStorage.getItem(USER_ID_KEY) : null;
+}
+
 function storeToken(token: string): void {
   if (isBrowser()) window.localStorage.setItem(TOKEN_KEY, token);
 }
 
 function clearToken(): void {
-  if (isBrowser()) window.localStorage.removeItem(TOKEN_KEY);
+  if (isBrowser()) {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_ID_KEY);
+  }
 }
 
 async function request(path: string, body: unknown, token?: string): Promise<AuthResult | AuthUser> {
@@ -45,12 +53,14 @@ async function request(path: string, body: unknown, token?: string): Promise<Aut
 export async function signUp(email: string, password: string, fullName?: string): Promise<AuthResult> {
   const result = await request('/auth/signup', { email, password, fullName }) as AuthResult;
   storeToken(result.accessToken);
+  if (isBrowser() && result.id) window.localStorage.setItem(USER_ID_KEY, result.id);
   return result;
 }
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
   const result = await request('/auth/login', { email, password }) as AuthResult;
   storeToken(result.accessToken);
+  if (isBrowser() && result.id) window.localStorage.setItem(USER_ID_KEY, result.id);
   return result;
 }
 
@@ -58,7 +68,9 @@ export async function getMe(): Promise<AuthUser | null> {
   const token = getToken();
   if (!token) return null;
   try {
-    return await request('/auth/me', undefined, token) as AuthUser;
+    const user = await request('/auth/me', undefined, token) as AuthUser;
+    if (isBrowser() && user?.id) window.localStorage.setItem(USER_ID_KEY, user.id);
+    return user;
   } catch {
     clearToken();
     return null;

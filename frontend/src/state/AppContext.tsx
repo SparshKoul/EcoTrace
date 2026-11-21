@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useGps } from '../hooks/useGps';
-import { fetchActivity, fetchAreas, fetchSites, submitReport } from '../services/api';
+import { addSiteNote, backSite, fetchActivity, fetchAreas, fetchSites, submitReport, voteSite } from '../services/api';
 import { getMe, signIn, signOut, signUp, type AuthUser } from '../services/auth';
 import type { ActivityItem, Area, ReportReceipt, ReportSubmission, Site } from '../types';
 
@@ -33,6 +33,9 @@ interface AppContextValue {
   notify: (message: string) => void;
   refresh: () => Promise<void>;
   sendReport: (submission: ReportSubmission) => Promise<ReportReceipt>;
+  backExistingSite: (siteId: string) => Promise<void>;
+  voteOnSite: (siteId: string, vote: 'confirm' | 'reject' | 'cleaned') => Promise<void>;
+  addNoteToSite: (siteId: string, content: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -117,15 +120,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return receipt;
   }, [refresh]);
 
+  const backExistingSite = useCallback(async (siteId: string) => {
+    try {
+      const result = await backSite(siteId, user?.id);
+      notify(
+        result.just_verified
+          ? 'Site reached 10 backers and is now VERIFIED!'
+          : `Backed site! Total backers: ${result.count} (${result.needed} needed for quorum).`
+      );
+      await refresh();
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : 'Could not back this site.');
+    }
+  }, [user?.id, notify, refresh]);
+
+  const voteOnSite = useCallback(async (siteId: string, vote: 'confirm' | 'reject' | 'cleaned') => {
+    if (!gps.fix) {
+      notify('Location required to cast a verification vote.');
+      return;
+    }
+    try {
+      await voteSite(siteId, vote, gps.fix.lat, gps.fix.lng, user?.id);
+      notify(`Vote recorded: ${vote}.`);
+      await refresh();
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : 'Could not cast vote.');
+    }
+  }, [gps.fix, user?.id, notify, refresh]);
+
+  const addNoteToSite = useCallback(async (siteId: string, content: string) => {
+    try {
+      await addSiteNote(siteId, content, user?.id);
+      notify('Note added to site.');
+      await refresh();
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : 'Could not add note.');
+    }
+  }, [user?.id, notify, refresh]);
+
   const value = useMemo<AppContextValue>(() => ({
     sites, areas, activity, loading,
     fix: gps.fix, gpsDenied: gps.denied, gpsLoading: gps.loading,
     locate: gps.locate, locateByIp: gps.locateByIp,
     online, user, signedIn: user !== null, authLoading, toast,
     signInUser, signUpUser, signOutUser, notify, refresh, sendReport,
+    backExistingSite, voteOnSite, addNoteToSite,
   }), [sites, areas, activity, loading, gps.fix, gps.denied, gps.loading,
     gps.locate, gps.locateByIp, online, user, authLoading, toast,
-    signInUser, signUpUser, signOutUser, notify, refresh, sendReport]);
+    signInUser, signUpUser, signOutUser, notify, refresh, sendReport,
+    backExistingSite, voteOnSite, addNoteToSite]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
