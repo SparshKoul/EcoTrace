@@ -197,7 +197,8 @@ frontend/
 
 ### Current location
 
-- On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which triggers the browser's own **"Allow location?"** prompt), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. This button uses **exact device location only** — it never substitutes an IP-derived position. **"Not now"** keeps the default view.
+- On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which triggers the browser's own **"Allow location?"** prompt), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. This button uses **device location only** — it never substitutes an IP-derived position. **"Not now"** keeps the default view.
+- `locate()` first tries `enableHighAccuracy: true` (real GPS). If that times out — common on desktops without a GPS chip — it automatically retries with `enableHighAccuracy: false` and a cached-age allowance, which returns the browser's network-based position quickly. A final failure shows the specific reason inline.
 - A **"◎ My location"** button stays in the top overlay so the citizen can re-centre at any time.
 - The one-shot request lives in `useGps.locate()` and is exposed through `AppContext`; the continuous `watchPosition` used by capture gates is separate.
 - If location is denied, unavailable, or blocked by an embedded preview / non-HTTPS context, the prompt shows the **specific reason inline** with **Try again**, **Use approximate location**, and **Keep Chitkara view** actions — no dead-end toast.
@@ -275,7 +276,7 @@ The shared `EvidenceAnalysis` type in `src/types.ts` documents the response shap
 ## Testing and verification
 
 ```bash
-npm test        # 19 tests across 4 files
+npm test        # 20 tests across 4 files
 npm run build   # tsc --noEmit && vite build
 npm run lint    # eslint .
 ```
@@ -285,7 +286,7 @@ All three commands pass in this commit. Tests cover:
 - Haversine distance, the 20 m merge radius, distance formatting and cluster keys
 - Capture gates: GPS accuracy > 30 m blocks, recorder support, missing-bin GPS requirement, sign-in and offline cases, waste-type requirement
 - Score quorum locking and all three score formulas
-- `useGps.locate()` with mocked geolocation: success returns a fix, denial returns an actionable error, insecure context refuses with an HTTPS message
+- `useGps.locate()` with mocked geolocation: success returns a fix, denial returns an actionable error, a high-accuracy timeout retries with a lighter request, insecure context refuses with an HTTPS message
 - `useGps.locateByIp()` with mocked fetch: city-level fallback result, and a clear error when all IP providers fail
 
 ---

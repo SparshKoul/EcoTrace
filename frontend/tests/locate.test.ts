@@ -62,6 +62,24 @@ describe('useGps.locate', () => {
     expect(result.current.denied).toBe(true);
   });
 
+  it('retries with a lighter location request when the precise GPS fix times out', async () => {
+    let calls = 0;
+    const timeout = { code: 3, TIMEOUT: 3, PERMISSION_DENIED: 1, message: 'timeout' } as GeolocationPositionError;
+    stubGeolocation((success, failure) => {
+      calls += 1;
+      if (calls === 1) failure?.(timeout);
+      else success(position);
+    });
+
+    const { result } = renderHook(() => useGps());
+    let resolved: Awaited<ReturnType<ReturnType<typeof useGps>['locate']>> | undefined;
+    await act(async () => { resolved = await result.current.locate(); });
+
+    expect(calls).toBe(2);
+    expect(resolved?.fix?.lat).toBe(30.5157);
+    expect(resolved?.error).toBeNull();
+  });
+
   it('centres the map from a public IP lookup when GPS is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
