@@ -50,6 +50,14 @@ _NO_EVIDENCE_REASON = "No waste evidence detected by available models."
 _REVIEW_REASON = "Human verification required"
 _DETECTOR_DOWN_REASON = "Detector unavailable; evidence incomplete"
 _MODERATION_FLAG_REASON = "Content flagged by moderation; human review required"
+_JUDGE_NO_REASON = "Vision judge found no waste evidence."
+_JUDGE_UNCERTAIN_REASON = "Vision judge could not confirm the report; human verification required."
+
+# SigLIP's confidence is a *relative* softmax over 7 waste prompts + a negative
+# prompt (uniform ≈ 0.125). A weak-but-positive score is still a reason to send
+# a report to a human rather than auto-rejecting it — a pretrained zero-shot
+# model is not reliable enough to reject on its own.
+_SIGLIP_EVIDENCE_MIN_CONFIDENCE = 0.15
 
 
 class VerificationService:
@@ -179,9 +187,19 @@ class VerificationService:
             )
 
         # --- Decision ------------------------------------------------------- #
-        is_waste_detected = bool(detections)
+        # No single (weak) model may hard-reject a report. Combine every signal
+        # that actually ran; YOLO stays the strongest local one, but SigLIP
+        # suggestions and the vision judge are honoured too.
+        yolo_waste = bool(detections)
+        siglip_waste = (
+            siglip.available
+            and siglip.predicted_category not in (None, "no_waste")
+            and (siglip.confidence or 0.0) >= _SIGLIP_EVIDENCE_MIN_CONFIDENCE
+        )
+        judge_waste = judge is not None and judge.available and judge.judgement == "YES"
+        is_waste_detected = yolo_waste or siglip_waste or judge_waste
         waste_category = report_type.value  # replaced by the Phase 5 engine
-        decision = self._decide(is_waste_detected, yolo_error)
+        decision = self._decide(yolo_waste, yolo_error, siglip, judge)
         if moderation is not None and moderation.status == "flagged":
             # Moderation is *not* a waste verdict: flagged content must never
             # silently become an auto-rejection of the waste claim.
@@ -263,13 +281,55 @@ class VerificationService:
         return detector.predict(small, conf=conf, iou=iou)
 
     @staticmethod
-    def _decide(is_waste_detected: bool, detector_error: Optional[str]) -> Decision:
-        """Conservative rule-based decision until the Phase 5 engine lands."""
+    def _decide(
+        yolo_waste: bool,
+        detector_error: Optional[str],
+        siglip: SiglipSummary,
+        judge: Optional[BedrockSummary],
+    ) -> Decision:
+        """Conservative rule-based decision until the Phase 5 engine lands.
+
+        YOLO boxes remain the strongest local evidence, but a report is never
+        hard-rejected just because one weak model found nothing. Positive or
+        uncertain secondary signals (vision judge, SigLIP 2) are routed to a
+        human instead; only an explicit "no waste" from the judge or a clean
+        negative from SigLIP confirms a rejection.
+        """
         if detector_error:
             return Decision(result="REVIEW_REQUIRED", confidence=None, reasons=[_DETECTOR_DOWN_REASON])
-        if not is_waste_detected:
-            return Decision(result="REJECTED", confidence=None, reasons=[_NO_EVIDENCE_REASON])
-        return Decision(result="REVIEW_REQUIRED", confidence=None, reasons=[_REVIEW_REASON])
+        if yolo_waste:
+            return Decision(result="REVIEW_REQUIRED", confidence=None, reasons=[_REVIEW_REASON])
+
+        # YOLO saw nothing — consult the other components that actually ran.
+        if judge is not None and judge.available:
+            if judge.judgement == "YES":
+                reason = f"Vision judge reports waste evidence ({judge.category or 'waste'})."
+                if judge.reason:
+                    reason += f" {judge.reason}"
+                return Decision(result="REVIEW_REQUIRED", confidence=None, reasons=[reason])
+            if judge.judgement == "NO":
+                reason = _JUDGE_NO_REASON
+                if judge.reason:
+                    reason += f" {judge.reason}"
+                return Decision(result="REJECTED", confidence=None, reasons=[reason])
+            # UNCERTAIN / UNKNOWN / judge error — never auto-reject.
+            reason = _JUDGE_UNCERTAIN_REASON
+            if judge.error:
+                reason += f" ({judge.error})"
+            return Decision(result="REVIEW_REQUIRED", confidence=None, reasons=[reason])
+
+        if (
+            siglip.available
+            and siglip.predicted_category not in (None, "no_waste")
+            and (siglip.confidence or 0.0) >= _SIGLIP_EVIDENCE_MIN_CONFIDENCE
+        ):
+            reason = (
+                f"SigLIP 2 suggests {siglip.predicted_category} "
+                f"(relative score {siglip.confidence:.2f}); human verification required."
+            )
+            return Decision(result="REVIEW_REQUIRED", confidence=None, reasons=[reason])
+
+        return Decision(result="REJECTED", confidence=None, reasons=[_NO_EVIDENCE_REASON])
 
 
 __all__ = ["VerificationService"]

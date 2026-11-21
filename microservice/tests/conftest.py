@@ -18,6 +18,7 @@ from PIL import Image
 from app.core.config import Settings
 from app.core.model_loader import ModelRegistry, load_models, reset_registry
 from app.schemas.response import Detection, YoloStatus
+from app.services.azure_judge_service import JudgeResult
 
 # --- Test configuration ------------------------------------------------- #
 
@@ -125,6 +126,36 @@ class FakeSiglip:
         return self.predicted, self.score, None
 
 
+class FakeJudge:
+    """Deterministic vision-judge fake — no HTTP calls."""
+
+    def __init__(
+        self,
+        *,
+        available: bool = True,
+        judgement: str = "YES",
+        reason: str | None = None,
+        category: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        self.available = available
+        self.judgement = judgement
+        self.reason = reason
+        self.category = category
+        self.model = "fake-judge"
+        self.error = error
+
+    def judge(self, image: bytes) -> JudgeResult:
+        return JudgeResult(
+            available=self.available,
+            judgement=self.judgement,
+            reason=self.reason,
+            category=self.category,
+            model=self.model,
+            error=self.error,
+        )
+
+
 class FakeRekognition:
     """Deterministic Rekognition fake — no boto3 client, no AWS credentials.
 
@@ -186,12 +217,14 @@ def make_registry(
     rekognition: Any = None,
     privacy: bool = True,
     siglip: Any = None,
+    azure_judge: Any = None,
 ) -> ModelRegistry:
     """Build a registry with fakes (default: one bottle detection, no AWS)."""
     registry = load_models(TEST_SETTINGS)
     registry.yolo = detector if detector is not None else FakeYoloDetector()
     registry.rekognition = rekognition
     registry.siglip = siglip
+    registry.azure_judge = azure_judge
     if not privacy:
         registry.privacy = None
     elif registry.privacy is None:
@@ -262,6 +295,7 @@ __all__ = [
     "FakeYoloDetector",
     "FakeRekognition",
     "FakeSiglip",
+    "FakeJudge",
     "make_registry",
     "make_test_image",
     "make_large_image_bytes",
