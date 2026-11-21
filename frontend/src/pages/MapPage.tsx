@@ -5,15 +5,34 @@ import { SiteMap } from '../components/map/SiteMap';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { GpsBadge } from '../components/ui/GpsBadge';
-import { RULES, TYPE_COLOR, TYPE_LABEL } from '../config/rules';
+import { PILOT_CENTRE, RULES, TYPE_COLOR, TYPE_LABEL } from '../config/rules';
 import type { Tab } from '../navigation';
 import { useApp } from '../state/AppContext';
-import type { Site } from '../types';
+import type { GeoPoint, Site } from '../types';
 
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { sites, areas, loading } = useApp();
+  const { sites, areas, loading, locate, notify } = useApp();
   const [complaintSiteId, setComplaintSiteId] = useState<string | null>(null);
   const [localitySite, setLocalitySite] = useState<Site | null>(null);
+  const [focusPoint, setFocusPoint] = useState<GeoPoint | null>(null);
+  const [userPoint, setUserPoint] = useState<GeoPoint | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [askForLocation, setAskForLocation] = useState(true);
+
+  const useMyLocation = async () => {
+    setLocating(true);
+    const result = await locate();
+    setLocating(false);
+    if (result) {
+      const point = { lat: result.lat, lng: result.lng };
+      setUserPoint(point);
+      setFocusPoint(point);
+      setAskForLocation(false);
+      notify(`Map centred on your location (±${Math.round(result.accuracyM)} m).`);
+    } else {
+      notify('Location unavailable. Allow location access in your browser, then try again.');
+    }
+  };
 
   return (
     <section className="relative h-full" aria-label="Civic waste map">
@@ -21,17 +40,44 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
         sites={sites}
         onOpenComplaint={setComplaintSiteId}
         onOpenScores={setLocalitySite}
+        focusPoint={focusPoint}
+        userPoint={userPoint}
       />
 
       <div className="pointer-events-none absolute inset-x-0 top-0 space-y-2 p-4">
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <GpsBadge />
           <Chip tone="accent">{sites.length} sites on map</Chip>
+          <button
+            type="button"
+            onClick={() => void useMyLocation()}
+            disabled={locating}
+            className="rounded-full border-2 border-ink bg-surface px-3 py-1 text-xs font-bold disabled:opacity-50"
+          >
+            {locating ? 'Locating…' : '◎ My location'}
+          </button>
         </div>
         <p className="pointer-events-auto max-w-md rounded-2xl border border-line bg-surface/95 px-3 py-2 text-xs text-muted">
-          Pins show severity (0–100). Colours show report type. Sites merge within {RULES.SITE_MERGE_RADIUS_M} m.
+          Starting at Chitkara University ({PILOT_CENTRE.lat.toFixed(2)}, {PILOT_CENTRE.lng.toFixed(2)}). Pins show
+          severity (0–100); colours show report type. Sites merge within {RULES.SITE_MERGE_RADIUS_M} m.
         </p>
       </div>
+
+      {askForLocation && (
+        <div className="pointer-events-auto absolute inset-x-4 top-36 z-[900] mx-auto max-w-md rounded-2xl border-2 border-ink bg-surface p-4 shadow-[0_4px_0_#221c15]">
+          <p className="font-display text-lg font-bold">See sites near you?</p>
+          <p className="mt-1 text-sm text-muted">
+            We'll ask your device for its current location and centre the map there. You can stay on the Chitkara
+            University view instead.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="sun" onClick={() => void useMyLocation()} disabled={locating}>
+              {locating ? 'Locating…' : 'Use my current location'}
+            </Button>
+            <Button variant="outline" onClick={() => setAskForLocation(false)}>Not now</Button>
+          </div>
+        </div>
+      )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-20 flex justify-center px-4">
         <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-2 shadow-md">

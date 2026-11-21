@@ -19,6 +19,7 @@ interface AppContextValue {
   readonly fix: ReturnType<typeof useGps>['fix'];
   readonly gpsDenied: boolean;
   readonly gpsLoading: boolean;
+  readonly locate: ReturnType<typeof useGps>['locate'];
   readonly online: boolean;
   readonly signedIn: boolean;
   readonly toast: string | null;
@@ -83,9 +84,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextValue>(() => ({
     sites, areas, activity, loading,
-    fix: gps.fix, gpsDenied: gps.denied, gpsLoading: gps.loading,
+    fix: gps.fix, gpsDenied: gps.denied, gpsLoading: gps.loading, locate: gps.locate,
     online, signedIn, toast, setSignedIn, notify, refresh, sendReport,
-  }), [sites, areas, activity, loading, gps.fix, gps.denied, gps.loading, online, signedIn, toast, notify, refresh, sendReport]);
+  }), [sites, areas, activity, loading, gps.fix, gps.denied, gps.loading, gps.locate, online, signedIn, toast, notify, refresh, sendReport]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

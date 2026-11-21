@@ -45,9 +45,10 @@ export const TILE_ATTRIBUTION = readString(
   '&copy; OpenStreetMap contributors',
 );
 
+/** Chitkara University, Rajpura, Punjab — the default pilot view until the citizen shares their location. */
 export const PILOT_CENTRE = {
-  lat: readNumber('VITE_PILOT_LAT', 26.2389),
-  lng: readNumber('VITE_PILOT_LNG', 73.0243),
+  lat: readNumber('VITE_PILOT_LAT', 30.5157),
+  lng: readNumber('VITE_PILOT_LNG', 76.6592),
 } as const;
 
 export const TYPE_LABEL: Record<string, string> = {

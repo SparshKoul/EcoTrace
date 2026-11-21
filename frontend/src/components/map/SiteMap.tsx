@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
-import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import { PILOT_CENTRE, TILE_ATTRIBUTION, TILE_URL, TYPE_COLOR, TYPE_LABEL } from '../../config/rules';
 import { clusterKey } from '../../domain/geo';
-import type { Site } from '../../types';
+import type { GeoPoint, Site } from '../../types';
 import { Chip } from '../ui/Chip';
 
 interface SiteMapProps {
   readonly sites: readonly Site[];
   readonly onOpenComplaint: (siteId: string) => void;
   readonly onOpenScores: (site: Site) => void;
+  /** When set, the map flies here — used after the citizen shares their live location. */
+  readonly focusPoint: GeoPoint | null;
+  /** The citizen's last known position, drawn as a blue user dot. */
+  readonly userPoint: GeoPoint | null;
 }
 
 function MapBridge({ onReady, onZoom }: { onReady: (map: L.Map) => void; onZoom: (zoom: number) => void }) {
@@ -27,16 +31,17 @@ interface Cluster {
   readonly sites: readonly Site[];
 }
 
-export function SiteMap({ sites, onOpenComplaint, onOpenScores }: SiteMapProps) {
+export function SiteMap({ sites, onOpenComplaint, onOpenScores, focusPoint, userPoint }: SiteMapProps) {
   const [zoom, setZoom] = useState(12);
   const [map, setMap] = useState<L.Map | null>(null);
-  const [focused, setFocused] = useState<Site | null>(null);
 
   const onReady = useCallback((instance: L.Map) => setMap(instance), []);
 
   useEffect(() => {
-    if (map && focused) map.flyTo([focused.lat, focused.lng], Math.max(map.getZoom(), 15), { duration: 0.6 });
-  }, [map, focused]);
+    if (map && focusPoint) {
+      map.flyTo([focusPoint.lat, focusPoint.lng], Math.max(map.getZoom(), 15), { duration: 0.8 });
+    }
+  }, [map, focusPoint]);
 
   const clusters = useMemo<Cluster[]>(() => {
     const groups = new Map<string, Site[]>();
@@ -59,6 +64,15 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores }: SiteMapProps) 
       <MapContainer center={[PILOT_CENTRE.lat, PILOT_CENTRE.lng]} zoom={12} className="h-full w-full">
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
         <MapBridge onReady={onReady} onZoom={setZoom} />
+        {userPoint && (
+          <CircleMarker
+            center={[userPoint.lat, userPoint.lng]}
+            radius={9}
+            pathOptions={{ color: '#ffffff', weight: 3, fillColor: '#1967d2', fillOpacity: 1 }}
+          >
+            <Popup>You are here</Popup>
+          </CircleMarker>
+        )}
 
         {clusters.map((cluster) => {
           const worst = cluster.sites.reduce((max, site) => Math.max(max, site.severity), 0);
@@ -81,7 +95,6 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores }: SiteMapProps) 
               eventHandlers={{
                 click: () => {
                   if (isCluster) map?.flyTo([cluster.lat, cluster.lng], Math.min(zoom + 3, 18), { duration: 0.5 });
-                  setFocused(null);
                 },
               }}
             >

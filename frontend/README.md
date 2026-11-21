@@ -74,8 +74,8 @@ Copy `.env.example` to `.env.local`. All variables are optional.
 | `VITE_USE_MOCK_API` | `true` | When true, serves local sample sites/areas/activity and a sample complaint instead of calling the backend |
 | `VITE_TILE_URL` | OpenStreetMap raster template | Map tile source; must contain `{s}`, `{z}`, `{x}`, `{y}` placeholders |
 | `VITE_TILE_ATTRIBUTION` | `© OpenStreetMap contributors` | Attribution rendered in the map corner |
-| `VITE_PILOT_LAT` | `26.2389` | Initial map centre latitude (Jodhpur pilot city) |
-| `VITE_PILOT_LNG` | `73.0243` | Initial map centre longitude |
+| `VITE_PILOT_LAT` | `30.5157` | Initial map centre latitude (Chitkara University, Rajpura, Punjab) |
+| `VITE_PILOT_LNG` | `76.6592` | Initial map centre longitude |
 
 ---
 
@@ -190,9 +190,16 @@ frontend/
 
 ### How it is configured
 
-- `src/components/map/SiteMap.tsx` mounts `<MapContainer>` centred on the pilot city (Jodhpur by default, `26.2389, 73.0243`) at zoom 12.
+- `src/components/map/SiteMap.tsx` mounts `<MapContainer>` centred on **Chitkara University, Rajpura, Punjab** (`30.5157, 76.6592`) by default at zoom 12.
 - `<TileLayer>` reads its URL and attribution from `VITE_TILE_URL` / `VITE_TILE_ATTRIBUTION`. The default is the public OpenStreetMap raster tile service; swapping in another provider (e.g. a self-hosted tile server or a satellite layer) requires only changing those two environment variables — no code changes.
 - Tile attribution is rendered in the map corner by Leaflet. Keep attribution when changing providers.
+
+### Current location
+
+- On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which prompts the browser for location permission), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. **"Not now"** keeps the default view.
+- A **"◎ My location"** button stays in the top overlay so the citizen can re-centre at any time.
+- The one-shot request lives in `useGps.locate()` and is exposed through `AppContext`; the continuous `watchPosition` used by capture gates is separate. Denied or unavailable location is reported through a user-facing toast instead of silently failing.
+- Mock sites are generated around the same default centre, so the pilot view always has sample reports before a real backend is connected.
 
 ### Markers and severity
 

@@ -18,9 +18,9 @@ const sampleEvidence = (label: string): string => {
 };
 
 const boundary = {
-  ulb: 'Jodhpur Municipal Corporation',
-  mla: 'Soorsagar Assembly Constituency',
-  mp: 'Jodhpur Parliamentary Constituency',
+  ulb: 'Rajpura Municipal Council',
+  mla: 'Rajpura Assembly Constituency',
+  mp: 'Patiala Parliamentary Constituency',
 };
 
 const now = new Date().toISOString();
@@ -66,15 +66,15 @@ const MOCK_SITES: readonly Site[] = [
 
 const MOCK_AREAS: readonly Area[] = [
   {
-    id: 'area-1', name: 'Soorsagar', ...boundary, reporterCount: 14, siteCount: 4,
+    id: 'area-1', name: 'Rajpura', ...boundary, reporterCount: 14, siteCount: 4,
     scores: computeAreaScores(MOCK_SITES, 14),
   },
   {
-    id: 'area-2', name: 'Sardarpura', ...boundary, reporterCount: 8, siteCount: 2,
+    id: 'area-2', name: 'Jansla', ...boundary, reporterCount: 8, siteCount: 2,
     scores: computeAreaScores(MOCK_SITES, 8),
   },
   {
-    id: 'area-3', name: 'Jodhpur West', ...boundary, reporterCount: 23, siteCount: 6,
+    id: 'area-3', name: 'Chitkara', ...boundary, reporterCount: 23, siteCount: 6,
     scores: computeAreaScores(MOCK_SITES, 23),
   },
 ];
