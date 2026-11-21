@@ -1,0 +1,28 @@
+# EcoTrace waste detector — YOLO dataset definition.
+#
+# POPULATE THIS BEFORE TRAINING:
+#   datasets/waste/images/train/*.jpg  +  labels/train/*.txt
+#   datasets/waste/images/val/*.jpg    +  labels/val/*.txt
+#   (optional) images/test + labels/test
+# Each label line:  <class_id> <x_center> <y_center> <width> <height>
+# coordinates normalised to 0..1. One line per object.
+#
+# Convert a COCO / TACO / Roboflow export with:
+#   python -m training.prepare_dataset --source coco --input <dir> --out datasets/waste
+# See README "Training the waste detector" for the full workflow.
+
+path: datasets/waste
+
+train: images/train
+val: images/val
+# test: images/test   # uncomment once a test split exists
+
+nc: 7
+names:
+  0: plastic_waste
+  1: garbage_bag
+  2: garbage_dump
+  3: overflowing_bin
+  4: construction_waste
+  5: burning_waste
+  6: other_waste

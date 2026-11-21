@@ -24,6 +24,11 @@ Implemented:
 - Pydantic request/response schemas, structured error envelopes
 - Unit tests with a fake detector (no weights / AWS credentials required)
 
+Implemented alongside Phase 2: **waste-detector training pipeline**
+(`training/train_yolo.py`, `validate_yolo.py`, `prepare_dataset.py`,
+`waste_classes.py`, `datasets/waste.yaml`) — fine-tune/validate with
+precision/recall/mAP50/mAP50-95 + confusion matrix.
+
 Planned (later phases, one commit each):
 
 - **Phase 2** — Amazon Rekognition (moderation, labels, faces, text) + privacy
@@ -151,9 +156,42 @@ If `INTERNAL_SERVICE_KEY` is set, all non-health endpoints require the header
 
 Phase 1 uses a pretrained general-purpose checkpoint (`yolo26n.pt` by default,
 auto-downloaded by Ultralytics on first load). **It is not a specialised waste
-detector** — it labels COCO classes (bottle, backpack, ...). Waste-specific
-fine-tuning arrives with `training/train_yolo.py` (later phase); drop resulting
-weights into `weights/` (git-ignored) and set `YOLO_MODEL_PATH`.
+detector** — it labels COCO classes (bottle, backpack, ...) and will not
+recognise "garbage pile" / "overflowing bin" unless fine-tuned.
+
+### Training the waste detector
+
+Classes are defined in `training/waste_classes.py` and `datasets/waste.yaml`
+(plastic_waste, garbage_bag, garbage_dump, overflowing_bin,
+construction_waste, burning_waste, other_waste).
+
+1. **Get a waste dataset** (public, e.g. TACO, TrashNet, or a Roboflow waste
+   export) with COCO-style annotations.
+2. **Convert it** to YOLO format with deterministic splits:
+   ```bash
+   python -m training.prepare_dataset --source taco \
+       --annotations /path/to/annotations.json \
+       --images /path/to/images --out datasets/waste
+   ```
+3. **Fine-tune** (transfer learning — never from scratch):
+   ```bash
+   python -m training.train_yolo --data datasets/waste.yaml \
+       --base yolo26n.pt --epochs 60 --device cuda
+   ```
+   On this machine the venv has CPU torch; for NVIDIA GPU training first
+   install CUDA torch from `https://download.pytorch.org/whl/cu124`, then
+   reinstall ultralytics so torch/torchvision versions stay matched.
+4. **Validate** — precision, recall, mAP50, mAP50-95, confusion matrix:
+   ```bash
+   python -m training.validate_yolo \
+       --weights weights/waste_yolo/waste_yolo_v1/weights/best.pt
+   ```
+   Metrics + plots land in `weights/validation/validation/`.
+5. **Deploy**: set `YOLO_MODEL_PATH=weights/waste_yolo/waste_yolo_v1/weights/best.pt`
+   in `.env` and restart. No code changes needed.
+
+**Never claim trained weights exist until you've run steps 1–4** and checked the
+validation report. The service reports `detector: <path>` from real config.
 
 If weights are missing or CUDA fails, the service degrades gracefully: the
 detector reports `available: false` and verification returns
