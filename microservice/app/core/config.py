@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     yolo_max_detections: int = Field(default=100, ge=1, le=1000)
 
     # --- Rekognition -------------------------------------------------------
-    rekognition_enabled: bool = True
+    rekognition_enabled: bool = False  # paid AWS API — opt in via .env only
     # Mumbai — lowest latency from India; Rekognition & Bedrock available.
     aws_region: str = "ap-south-1"
     aws_rekognition_max_labels: int = Field(default=30, ge=1, le=200)
