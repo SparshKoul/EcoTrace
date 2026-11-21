@@ -1,12 +1,12 @@
 -- EcoTrace Core PostgreSQL Schema
--- Migration script for tables: sites, reports, notes, area_scores
+-- Migration script for tables: sites, reports, notes, area_scores, cleanup_claims, site_backers, letters
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. Sites Table (Clustered waste hotspots)
 CREATE TABLE IF NOT EXISTS sites (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  status VARCHAR(50) NOT NULL DEFAULT 'open', -- open, verified, cleaning, cleaned, rejected
+  status VARCHAR(50) NOT NULL DEFAULT 'open', -- open, verified, cleaning, cleaned, reopened, expired
   waste_type VARCHAR(100) NOT NULL,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS sites (
   first_reported_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Phase 3 additions. ADD COLUMN IF NOT EXISTS keeps existing deployments working.
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS verification VARCHAR(30) NOT NULL DEFAULT 'unverified';
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS cleanup_status VARCHAR(30) NOT NULL DEFAULT 'none';
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS severity INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS after_photo_url TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_sites_coords ON sites (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_sites_status ON sites (status);
@@ -60,3 +66,40 @@ CREATE TABLE IF NOT EXISTS area_scores (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(area_type, area_name)
 );
+
+-- 5. Phase 3.1 / 3.5 — after-photo cleanup claims and their AI validation result
+CREATE TABLE IF NOT EXISTS cleanup_claims (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  after_photo_url TEXT NOT NULL,
+  uploader_id TEXT NOT NULL,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  distance_m DOUBLE PRECISION,
+  status VARCHAR(30) NOT NULL DEFAULT 'checking', -- checking, accepted, rejected
+  ai_confidence DOUBLE PRECISION,
+  reason TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  validated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_cleanup_claims_site ON cleanup_claims (site_id);
+CREATE INDEX IF NOT EXISTS idx_cleanup_claims_status ON cleanup_claims (status);
+
+-- 6. Phase 3.4 — distinct backers; composite key enforces the one-person-one-backer rule
+CREATE TABLE IF NOT EXISTS site_backers (
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (site_id, user_id)
+);
+
+-- 7. Phase 3.2 / 3.3 — generated letters with their verified citation set
+CREATE TABLE IF NOT EXISTS letters (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  site_id UUID NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  document JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_letters_site ON letters (site_id);

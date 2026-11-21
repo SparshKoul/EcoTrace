@@ -4,6 +4,9 @@ import cors from "@fastify/cors";
 import { checkDbHealth } from "./db/pool.js";
 import { reportRoutes } from "./routes/reports.js";
 import { siteRoutes } from "./routes/sites.js";
+import { cleanupRoutes } from "./routes/cleanup.js";
+import { backerRoutes } from "./routes/backers.js";
+import { letterRoutes } from "./routes/letters.js";
 
 export function buildServer(): FastifyInstance {
   const app = fastify({
@@ -45,6 +48,11 @@ export function buildServer(): FastifyInstance {
   // Register feature routes
   app.register(reportRoutes, { prefix: "/api" });
   app.register(siteRoutes, { prefix: "/api" });
+
+  // Phase 3 — Civic Action & Cleanup Verification
+  app.register(cleanupRoutes, { prefix: "/api" });
+  app.register(backerRoutes, { prefix: "/api" });
+  app.register(letterRoutes, { prefix: "/api" });
 
   return app;
 }
