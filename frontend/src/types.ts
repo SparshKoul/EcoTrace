@@ -77,7 +77,7 @@ export interface ActivityItem {
   readonly id: string;
   readonly type: ReportType;
   readonly status: SiteStatus | 'PROCESSING' | 'REJECTED';
-  readonly location: GpsFix;
+  readonly location?: GpsFix;
   readonly createdAt: string;
   readonly detail: string;
 }

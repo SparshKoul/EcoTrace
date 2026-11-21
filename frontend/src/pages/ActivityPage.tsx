@@ -24,9 +24,11 @@ export function ActivityPage() {
           <li key={item.id} className="eco-card flex items-start justify-between gap-3">
             <div>
               <p className="font-bold">{TYPE_LABEL[item.type] ?? item.type}</p>
-              <p className="text-xs text-muted">
-                {item.location.lat.toFixed(4)}, {item.location.lng.toFixed(4)} · ±{Math.round(item.location.accuracyM)} m
-              </p>
+              {item.location && (
+                <p className="text-xs text-muted">
+                  {item.location.lat.toFixed(4)}, {item.location.lng.toFixed(4)} · ±{Math.round(item.location.accuracyM)} m
+                </p>
+              )}
               <p className="mt-1 text-sm text-muted">{item.detail}</p>
               <p className="mt-1 text-[11px] text-muted">{new Date(item.createdAt).toLocaleString()}</p>
             </div>

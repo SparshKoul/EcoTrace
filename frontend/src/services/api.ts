@@ -8,8 +8,22 @@ import type {
   Site,
 } from '../types';
 import { computeAreaScores } from '../domain/scores';
+import { getToken } from './auth';
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const authHeaders = (): Record<string, string> => {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+/** The backend stores a photo URL, so a captured blob is sent as a data URL. */
+const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result));
+  reader.onerror = () => reject(new Error('Could not encode the captured image.'));
+  reader.readAsDataURL(blob);
+});
 
 /** Offline placeholder so the map has something meaningful before the backend is wired up. */
 const sampleEvidence = (label: string): string => {
@@ -102,9 +116,33 @@ export async function fetchSites(): Promise<Site[]> {
     await wait(150);
     return [...MOCK_SITES];
   }
-  const response = await fetch(`${API_BASE_URL}/api/v1/sites`);
+  const response = await fetch(`${API_BASE_URL}/api/sites`, { headers: authHeaders() });
   if (!response.ok) throw new Error('Could not load verified dump sites.');
-  return (await response.json()) as Site[];
+  const data = await response.json() as {
+    sites: {
+      id: string; status: string; waste_type: string; latitude: number; longitude: number;
+      severity?: number; backers_count: number; ward_name?: string;
+      mla_constituency?: string; mp_constituency?: string;
+      first_reported_at: string; last_activity_at: string;
+    }[];
+  };
+  return data.sites.map((row) => ({
+    id: row.id,
+    lat: Number(row.latitude),
+    lng: Number(row.longitude),
+    type: (['dump', 'construction', 'water', 'overflowing_bin', 'no_bin'].includes(row.waste_type)
+      ? row.waste_type : 'dump') as Site['type'],
+    wasteStream: 'mixed',
+    severity: Number(row.severity ?? 0),
+    status: (row.status === 'cleaned' ? 'cleared' : row.status === 'cleaning' ? 'open' : row.status) as Site['status'],
+    reportCount: Number(row.backers_count ?? 0),
+    reporterCount: Number(row.backers_count ?? 0),
+    nearBin: false,
+    evidenceUrl: null,
+    boundary: { ulb: row.ward_name ?? null, mla: row.mla_constituency ?? null, mp: row.mp_constituency ?? null },
+    createdAt: row.first_reported_at,
+    updatedAt: row.last_activity_at,
+  }));
 }
 
 export async function fetchAreas(): Promise<Area[]> {
@@ -112,16 +150,47 @@ export async function fetchAreas(): Promise<Area[]> {
     await wait(120);
     return [...MOCK_AREAS];
   }
-  const response = await fetch(`${API_BASE_URL}/api/v1/areas`);
-  if (!response.ok) throw new Error('Could not load area scorecards.');
-  return (await response.json()) as Area[];
+  const kinds = ['ward', 'mla', 'mp'] as const;
+  const groups = await Promise.all(kinds.map(async (kind) => {
+    const response = await fetch(`${API_BASE_URL}/api/areas/${kind}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error('Could not load area scorecards.');
+    return response.json() as Promise<{
+      areas: {
+        id: string; name: string; reporterCount: number; cleanedCount: number;
+        openCount: number; score: number | null;
+      }[];
+    }>;
+  }));
+  return groups.flatMap((group, index) => group.areas.map((area) => ({
+    id: `${kinds[index]}-${area.id}`,
+    name: area.name,
+    ulb: null,
+    mla: null,
+    mp: null,
+    reporterCount: area.reporterCount,
+    siteCount: area.cleanedCount + area.openCount,
+    scores: area.score === null ? null : {
+      clearing: area.score,
+      citizenDumping: area.score,
+      binAccess: area.score,
+    },
+  })));
 }
 
 export async function fetchActivity(): Promise<ActivityItem[]> {
   if (USE_MOCK_API) return [...mockActivity];
-  const response = await fetch(`${API_BASE_URL}/api/v1/reports/mine`);
-  if (!response.ok) throw new Error('Could not load your reports.');
-  return (await response.json()) as ActivityItem[];
+  const response = await fetch(`${API_BASE_URL}/api/users/me/activity`, { headers: authHeaders() });
+  if (!response.ok) return [];
+  const data = await response.json() as {
+    activity: { id: string; kind: string; detail: string; createdAt: string }[];
+  };
+  return data.activity.map((entry) => ({
+    id: entry.id,
+    type: 'dump' as const,
+    status: entry.kind === 'cleanup' ? ('cleared' as const) : ('PROCESSING' as const),
+    createdAt: entry.createdAt,
+    detail: entry.detail,
+  }));
 }
 
 export async function submitReport(submission: ReportSubmission): Promise<ReportReceipt> {
@@ -142,18 +211,20 @@ export async function submitReport(submission: ReportSubmission): Promise<Report
     return { report_id, status: 'PROCESSING' };
   }
 
-  const form = new FormData();
-  form.append('type', submission.type);
-  form.append('mode', submission.mode);
-  form.append('lat', String(submission.location.lat));
-  form.append('lng', String(submission.location.lng));
-  form.append('accuracy_m', String(submission.location.accuracyM));
-  form.append('note', submission.note);
-  submission.media.forEach((blob, index) => form.append(`media[${index}]`, blob, `evidence-${index}.webp`));
-
-  const response = await fetch(`${API_BASE_URL}/api/v1/reports`, { method: 'POST', body: form });
-  if (!response.ok) throw new Error('The report could not be submitted.');
-  return (await response.json()) as ReportReceipt;
+  const firstPhoto = submission.media[0] ? await blobToDataUrl(submission.media[0]) : '';
+  const response = await fetch(`${API_BASE_URL}/api/reports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({
+      photoUrl: firstPhoto || 'https://example.com/no-photo.jpg',
+      wasteType: submission.type,
+      latitude: submission.location.lat,
+      longitude: submission.location.lng,
+    }),
+  });
+  const data = await response.json().catch(() => ({})) as { report?: { id?: string }; error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'The report could not be submitted.');
+  return { report_id: String(data.report?.id ?? `local-${Date.now()}`), status: 'PROCESSING' };
 }
 
 export async function fetchComplaint(siteId: string): Promise<ComplaintLetter> {
@@ -187,7 +258,22 @@ export async function fetchComplaint(siteId: string): Promise<ComplaintLetter> {
     };
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/v1/sites/${encodeURIComponent(siteId)}/complaint`);
+  const response = await fetch(
+    `${API_BASE_URL}/api/letters/site/${encodeURIComponent(siteId)}`,
+    { headers: authHeaders() },
+  );
   if (!response.ok) throw new Error('The complaint letter could not be prepared.');
-  return (await response.json()) as ComplaintLetter;
+  const letter = await response.json() as {
+    letter_id: string; site_id: string; to: string; cc: string[]; subject: string;
+    body: string; citations: { quote: string }[]; created_at: string;
+  };
+  return {
+    siteId: letter.site_id,
+    recipient: letter.to,
+    cc: letter.cc,
+    subject: letter.subject,
+    body: letter.body,
+    citations: letter.citations.map((citation) => citation.quote),
+    generatedAt: letter.created_at,
+  };
 }
