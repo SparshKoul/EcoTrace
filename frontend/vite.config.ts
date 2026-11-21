@@ -10,8 +10,21 @@ export default defineConfig(({ mode }) => ({
     // `npm run dev:https` serves HTTPS so other devices get the browser location prompt.
     ...(mode === 'https' ? [basicSsl()] : []),
   ],
-  // host: true exposes the dev server on the LAN.
-  server: { host: true, port: 5173 },
+  // host: true exposes the dev server on the LAN with proxy to backend.
+  server: {
+    host: true,
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
   build: { chunkSizeWarningLimit: 900 },
   test: {
     environment: 'jsdom',

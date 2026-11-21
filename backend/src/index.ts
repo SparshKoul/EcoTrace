@@ -35,10 +35,12 @@ export function buildServer(): FastifyInstance {
     },
   });
 
-  // Enable CORS
+  // Enable CORS to accept requests from any client (desktop, mobile LAN, tunnels)
   app.register(cors, {
-    origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN,
+    origin: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "Accept", "*"],
+    credentials: true,
   });
 
   // Health check endpoint (including DB connectivity probe)
