@@ -7,7 +7,25 @@ structured JSON verdict to the Node.js backend.
 This service owns **no** user auth, **no** application database, and **no**
 report storage — it is a stateless verification engine.
 
-## Status — Phase 1 (MVP)
+## Backend teammate quickstart (Node.js)
+
+```bash
+git checkout microservice        # branch with all AI/ML code
+cd microservice
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env             # Azure key + region; Rekognition OFF by default
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Then see **`docs/BACKEND_INTEGRATION.md`** for the ready-to-use TypeScript
+client (`verifyWasteImage()`), health check, curl example, status codes and
+expected JSON. `docs/verify_client.py` is a Python alternative.
+
+Service URL: `http://localhost:8000` locally, `http://microservice:8000` on
+Docker/k8s. Docs: `http://localhost:8000/docs`.
+
+## Status — Phases 1–5 implemented (Azure judge, no AWS needed)
 
 Implemented:
 
@@ -37,7 +55,14 @@ Implemented alongside Phase 2: **waste-detector training pipeline**
 `waste_classes.py`, `datasets/waste.yaml`) — fine-tune/validate with
 precision/recall/mAP50/mAP50-95 + confusion matrix.
 
-Planned (later phases, one commit each):
+**Phase 2:** Rekognition service (opt-in, `REKOGNITION_ENABLED=false` by default)
++ privacy blur (faces/plates) with separate private original/processed storage.
+**Phase 3:** Azure AI Foundry vision judge (`gpt-5-mini`) replaces paid Bedrock —
+strict Pydantic JSON validation, bounded retries, no fabricated confidence.
+**Phase 5:** Decision engine uses all model evidence — judge YES with no YOLO
+boxes is NEVER rejected as "no waste evidence"; moderation kept separate.
+
+Planned (Phase 6):
 
 - **Phase 2** — Amazon Rekognition (moderation, labels, faces, text) + privacy
   blurring pipeline (faces & license plates) with separate original/processed storage
