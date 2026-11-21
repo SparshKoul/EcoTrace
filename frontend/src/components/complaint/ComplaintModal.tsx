@@ -12,7 +12,8 @@ interface ComplaintModalProps {
 }
 
 export function ComplaintModal({ siteId, onClose }: ComplaintModalProps) {
-  const { notify } = useApp();
+  const { notify, feed } = useApp();
+  const evidence = feed.find((report) => report.site_id === siteId);
   const [letter, setLetter] = useState<ComplaintLetter | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,6 +89,34 @@ export function ComplaintModal({ siteId, onClose }: ComplaintModalProps) {
                 <Chip tone="accent">{letter.citations.length} verified citations</Chip>
                 <Chip tone="neutral">Review before sending</Chip>
               </div>
+
+              {evidence && (evidence.sanitized_media_url || evidence.thumbnail_url) && (
+                <div className="space-y-2 rounded-2xl border border-line bg-page p-4">
+                  <p className="eco-label">Privacy-protected evidence attached to this complaint</p>
+                  {evidence.media_type === 'video' && evidence.sanitized_media_url ? (
+                    <video
+                      controls
+                      className="max-h-64 w-full rounded-xl bg-ink object-contain"
+                      src={evidence.sanitized_media_url}
+                    />
+                  ) : (
+                    <img
+                      alt="Sanitized evidence from the citizen report"
+                      className="max-h-64 w-full rounded-xl object-cover"
+                      src={evidence.sanitized_media_url ?? evidence.thumbnail_url ?? ''}
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Chip tone="accent">🔒 {evidence.pii_blur_count} sensitive items blurred</Chip>
+                    <Chip tone="neutral"><span className="capitalize">{evidence.trash_category?.replace(/_/g, ' ')}</span></Chip>
+                  </div>
+                  <p className="text-[11px] text-muted">
+                    Captured {evidence.captured_at ? new Date(evidence.captured_at).toLocaleString() : '—'} ·
+                    GPS {evidence.lat.toFixed(5)}, {evidence.lng.toFixed(5)} ·
+                    Origin IP {evidence.request_ip_masked ?? 'masked'}
+                  </p>
+                </div>
+              )}
               <div className="rounded-2xl border border-line bg-page p-4">
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted">
                   Every quoted rule passed the deterministic exact-substring check against the SWM Rules, 2026 corpus.
