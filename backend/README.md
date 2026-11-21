@@ -145,9 +145,62 @@ Errors: `400` validation, `vote_too_far`, or `USER_ID_REQUIRED`; `404` site/repo
 
 ---
 
+---
+
+## Phase 5 — Cleanliness Scores & Video Scanning
+
+| Roadmap step | Implementation |
+| :--- | :--- |
+| **5.1 Area Cleanliness Scoring** | `src/routes/areas.ts`, `src/services/scores/AreaScoringService.ts`, `src/domain/scores/AreaScores.ts` |
+| **5.2 City Ranking Leaderboard** | `src/routes/rankings.ts`, `getCityRanking()` in `AreaScoringService.ts` |
+| **5.3 Continuous Video Scan Ingestion** | `src/routes/scans.ts`, `src/services/scans/ScanService.ts`, `src/domain/scans/ScanSession.ts`, `scan_sessions` / `scan_frames` tables |
+| **5.4 Social Share Card Generator** | `src/routes/share.ts`, `src/services/share/ShareCardService.ts`, `src/domain/share/ShareCard.ts` |
+
+### Domain rules enforced
+
+- **Scores stay locked below 10 reporters** (same Sybil quorum as the frontend). The score is `0.6 × resolutionRate + 0.4 × velocityScore − reopenPenalty`, clamped to 0–100. `resolutionRate = cleaned / (cleaned + open)`, `velocityScore = 100 − 2 × avgCleanupHours` (40 when nothing has been cleaned), and the reopen penalty is `5 × reopenedCount`, capped at 30. Grades: good ≥ 70, warn ≥ 40, bad below 40.
+- **Rankings** are worst-first across ward / MLA / MP areas whose name contains the requested `cityId`; locked areas are placed last and excluded from the ranked output.
+- **Scan frames** require strictly increasing `t_ms`, a non-empty `photoUrl`, at most 600 frames and a 60 s maximum duration. Each batch reports accepted frames and per-frame rejection reasons; GPS fixes are counted separately. A session can be completed once (further frames are then rejected).
+- **Share cards** are generated server-side as escaped SVG (1200×630) with status badge, before photo and sanitized after photo. Text is also returned for X/WhatsApp. All dynamic values are XML-escaped; nothing is posted to a social network automatically.
+
+### Phase 5 endpoints
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/areas/:kind` | Scorecards for `ward`, `mla` or `mp` |
+| `GET` | `/api/areas/:kind/:id/score` | One area score |
+| `GET` | `/api/rankings/city/:cityId` | Worst-first city leaderboard |
+| `POST` | `/api/scans/start` | Start a scan session (`{ userId? }`) |
+| `POST` | `/api/scans/:id/frames` | Ingest a batch of `{ frames: [{ t_ms, photoUrl, latitude?, longitude?, accuracyM? }] }` |
+| `GET` | `/api/scans/:id` | Session, progress and frames |
+| `POST` | `/api/scans/:id/complete` | Close a session |
+| `GET` | `/api/share/sites/:id` | Share link, text and card data |
+| `GET` | `/api/share/sites/:id/card.svg` | Rendered SVG card (`image/svg+xml`) |
+
+```bash
+BASE=http://127.0.0.1:8000/api
+
+curl -s "$BASE/areas/ward"
+curl -s "$BASE/areas/mla/Rajpura%20Assembly%20Constituency/score"
+curl -s "$BASE/rankings/city/rajpura"
+
+SCAN=$(curl -s -X POST "$BASE/scans/start" -H 'Content-Type: application/json' -d '{"userId":"surveyor-1"}')
+ID=$(echo "$SCAN" | python3 -c "import json,sys; print(json.load(sys.stdin)['session']['id'])")
+curl -s -X POST "$BASE/scans/$ID/frames" -H 'Content-Type: application/json' \
+  -d '{"frames":[{"t_ms":0,"photoUrl":"https://example.com/f0.jpg","latitude":30.5157,"longitude":76.6592}]}'
+curl -s -X POST "$BASE/scans/$ID/complete"
+
+curl -s "$BASE/share/sites/site_demo_chitkara"
+curl -s "$BASE/share/sites/site_demo_chitkara/card.svg"
+```
+
+Errors: `400` invalid area kind / validation, `404` area, scan session or site not found.
+
+---
+
 ## Verification
 
-`npm test` runs **40 tests** (15 suites), including Phase 3 and Phase 4 tests for:
+`npm test` runs **51 tests** (18 suites), including Phase 3, 4 and 5 tests for:
 
 - 10-backer quorum and distinct-user counting (`src/domain/sites/Backers.test.ts`)
 - cleanup proximity, pending/conflict checks, and state transitions (`src/domain/sites/SiteCleanup.test.ts`)
@@ -155,9 +208,14 @@ Errors: `400` validation, `vote_too_far`, or `USER_ID_REQUIRED`; `404` site/repo
 - one-latest-vote-per-user, vote radius, reject safety valve (`src/domain/sites/VoteTally.test.ts`)
 - three-reporter photo hide threshold and repeat-flag deduplication (`src/domain/flags/PhotoFlags.test.ts`)
 - deterministic note briefing content and note-count capping (`src/domain/notes/NoteSummary.test.ts`)
+- score quorum locking, composite formula, reopen penalty and worst-first ranking (`src/domain/scores/AreaScores.test.ts`)
+- scan frame monotonicity, duration/frame caps and progress counting (`src/domain/scans/ScanSession.test.ts`)
+- SVG escaping and share-card/text generation (`src/domain/share/ShareCard.test.ts`)
 
 All endpoint flows were also smoke-tested with PostgreSQL offline using the in-memory fallback: 9 backers stay unverified, the 10th verifies and escalates; a 1112 m after-photo is rejected with 400, an 11 m one is accepted with 202 and closes the site after validation; the generated letter had 3 verified citations with `template_fallback: false`.
 
 Phase 4 smoke test: an 11 m confirm vote was accepted (and incremented the backer count), a 1590 m vote returned `vote_too_far` with 400; a note was added and the summary briefing listed all 4 observations with `source: "offline"`; three distinct flags moved `rpt_demo_1` to `hidden: true`, and both My Reports and My Activity then returned that photo as hidden.
+
+Phase 5 smoke test: the ward score was locked (`score: null`, `needed: 10`) before the quorum and became `16` after 10 backers; the city leaderboard returned two areas ranked worst-first; a scan accepted 2 frames and rejected a duplicate `t_ms` plus a 61 s frame, then completed successfully; the share endpoint returned a link/text and the SVG card with `Content-Type: image/svg+xml`.
 
 `npm audit` reports 0 vulnerabilities (zod was upgraded to 4.6.7 to clear a DoS advisory; the only required code change was `PORT: z.string().transform(Number).default(8000)` in `src/config/env.ts`).

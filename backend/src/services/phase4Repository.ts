@@ -77,6 +77,20 @@ export async function listReportsByUser(userId: string): Promise<StoredReport[]>
   return phase4Memory.listReportsByUser(userId);
 }
 
+export async function listReportsBySite(siteId: string): Promise<StoredReport[]> {
+  try {
+    const result = await query(
+      `SELECT id, site_id, user_id, photo_url, waste_type, latitude, longitude, status, created_at
+       FROM reports WHERE site_id = $1 ORDER BY created_at DESC`,
+      [siteId],
+    );
+    if (result.rows.length > 0) return result.rows.map((row) => mapReport(row as Row));
+  } catch {
+    // offline
+  }
+  return phase4Memory.listReportsBySite(siteId);
+}
+
 export async function getReport(id: string): Promise<StoredReport | null> {
   try {
     const result = await query(

@@ -135,3 +135,26 @@ CREATE TABLE IF NOT EXISTS photo_flags (
 );
 
 CREATE INDEX IF NOT EXISTS idx_photo_flags_photo ON photo_flags (photo_id);
+
+-- 10. Phase 5.3 — continuous video scan sessions with synchronised GPS frames
+CREATE TABLE IF NOT EXISTS scan_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'active', -- active, completed
+  started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  ended_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE IF NOT EXISTS scan_frames (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID NOT NULL REFERENCES scan_sessions(id) ON DELETE CASCADE,
+  t_ms INTEGER NOT NULL,
+  photo_url TEXT NOT NULL,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  accuracy_m DOUBLE PRECISION,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (session_id, t_ms)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scan_frames_session ON scan_frames (session_id, t_ms);

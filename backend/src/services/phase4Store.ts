@@ -77,6 +77,9 @@ export const phase4Memory = {
   listReportsByUser(userId: string): StoredReport[] {
     return [...reports.values()].filter((report) => report.user_id === userId);
   },
+  listReportsBySite(siteId: string): StoredReport[] {
+    return [...reports.values()].filter((report) => report.site_id === siteId);
+  },
   addNote(note: CitizenNote): void {
     notes.set(note.id, note);
   },

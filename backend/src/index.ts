@@ -11,6 +11,10 @@ import { voteRoutes } from "./routes/votes.js";
 import { noteRoutes } from "./routes/notes.js";
 import { flagRoutes } from "./routes/flags.js";
 import { activityRoutes } from "./routes/activity.js";
+import { areaRoutes } from "./routes/areas.js";
+import { rankingRoutes } from "./routes/rankings.js";
+import { scanRoutes } from "./routes/scans.js";
+import { shareRoutes } from "./routes/share.js";
 
 export function buildServer(): FastifyInstance {
   const app = fastify({
@@ -63,6 +67,12 @@ export function buildServer(): FastifyInstance {
   app.register(noteRoutes, { prefix: "/api" });
   app.register(flagRoutes, { prefix: "/api" });
   app.register(activityRoutes, { prefix: "/api" });
+
+  // Phase 5 — Cleanliness Scores & Video Scanning
+  app.register(areaRoutes, { prefix: "/api" });
+  app.register(rankingRoutes, { prefix: "/api" });
+  app.register(scanRoutes, { prefix: "/api" });
+  app.register(shareRoutes, { prefix: "/api" });
 
   return app;
 }
