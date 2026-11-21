@@ -15,6 +15,7 @@ import { areaRoutes } from "./routes/areas.js";
 import { rankingRoutes } from "./routes/rankings.js";
 import { scanRoutes } from "./routes/scans.js";
 import { shareRoutes } from "./routes/share.js";
+import { authRoutes } from "./routes/auth.js";
 
 export function buildServer(): FastifyInstance {
   const app = fastify({
@@ -73,6 +74,9 @@ export function buildServer(): FastifyInstance {
   app.register(rankingRoutes, { prefix: "/api" });
   app.register(scanRoutes, { prefix: "/api" });
   app.register(shareRoutes, { prefix: "/api" });
+
+  // Supabase Authentication
+  app.register(authRoutes, { prefix: "/api" });
 
   return app;
 }

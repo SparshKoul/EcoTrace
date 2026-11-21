@@ -5,6 +5,7 @@ import { aiVerifyClient } from "../services/ai/verifyClient.js";
 import { findNearbySite, type Site } from "../services/sites/siteMerger.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { phase4Memory } from "../services/phase4Store.js";
+import { getRequestUser } from "../services/auth/requestUser.js";
 
 const createReportSchema = z.object({
   photoUrl: z.string().url("Valid photo URL is required"),
@@ -25,7 +26,10 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    const { photoUrl, wasteType, latitude, longitude, userId } = parseResult.data;
+    const { photoUrl, wasteType, latitude, longitude } = parseResult.data;
+    // A valid Supabase token always wins over the optional demo userId field.
+    const authUser = await getRequestUser(request);
+    const userId = authUser?.id ?? parseResult.data.userId;
 
     // 1. Resolve administrative boundaries (Ward, MLA, MP)
     const boundary = resolveBoundary({ latitude, longitude });
