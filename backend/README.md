@@ -240,3 +240,5 @@ Phase 4 smoke test: an 11 m confirm vote was accepted (and incremented the backe
 Phase 5 smoke test: the ward score was locked (`score: null`, `needed: 10`) before the quorum and became `16` after 10 backers; the city leaderboard returned two areas ranked worst-first; a scan accepted 2 frames and rejected a duplicate `t_ms` plus a 61 s frame, then completed successfully; the share endpoint returned a link/text and the SVG card with `Content-Type: image/svg+xml`.
 
 `npm audit` reports 0 vulnerabilities (zod was upgraded to 4.6.7 to clear a DoS advisory; the only required code change was `PORT: z.string().transform(Number).default(8000)` in `src/config/env.ts`).
+
+The full Phase 3–5 flow was also verified against a **live Supabase database**: `npm run db:setup` created all 11 tables, `GET /health` reported `database.connected: true`, report ingestion wrote real UUID rows, and cleanup claims, letters, notes, votes, flags, area scores, rankings, share cards and scan sessions/frames all persisted. Pseudorandom prefixed IDs were replaced with `randomUUID()` so inserts into UUID columns succeed.
