@@ -47,10 +47,15 @@ const positionErrorText = (error: GeolocationPositionError): string => {
     return 'Location access is blocked. Allow it for this site in your browser settings, then try again.';
   }
   if (error.code === error.TIMEOUT) {
-    return 'Getting a GPS fix took too long. Move outdoors and try again.';
+    return 'Your browser could not return a location in time. Check that location services are enabled, then try again.';
   }
-  return 'We could not get a GPS fix. Check that location services are on, then try again.';
+  return 'Your browser could not determine a location. Check location services and try again.';
 };
+
+const requestPosition = (options: PositionOptions): Promise<GeolocationPosition> =>
+  new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
 
 /** FR-1.2: a continuous high-accuracy watch. Acceptance is decided by the capture gates, not here. */
 export function useGps(): GpsState {
@@ -62,37 +67,48 @@ export function useGps(): GpsState {
 
   const refresh = useCallback(() => setNonce((value) => value + 1), []);
 
-  const locate = useCallback((): Promise<LocateResult> => {
+  const locate = useCallback(async (): Promise<LocateResult> => {
     if (typeof window !== 'undefined' && !window.isSecureContext) {
       const message = 'Location needs a secure context. Open this app on localhost or over HTTPS.';
       setError(message);
-      return Promise.resolve({ fix: null, error: message });
+      return { fix: null, error: message };
     }
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       const message = 'This browser or preview does not expose geolocation. You can keep the Chitkara University view, or open the app in a normal browser tab.';
       setDenied(true);
       setError(message);
-      return Promise.resolve({ fix: null, error: message });
+      return { fix: null, error: message };
     }
 
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const next = toFix(position);
-          setFix(next);
-          setDenied(false);
-          setError(null);
-          resolve({ fix: next, error: null });
-        },
-        (positionError) => {
-          const message = positionErrorText(positionError);
-          if (positionError.code === positionError.PERMISSION_DENIED) setDenied(true);
-          setError(message);
-          resolve({ fix: null, error: message });
-        },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
-      );
-    });
+    let position: GeolocationPosition;
+    try {
+      // First ask the device for its best fix. Many desktops have no GPS chip and this can time out.
+      position = await requestPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 });
+    } catch (firstError) {
+      const first = firstError as GeolocationPositionError;
+      if (first.code === first.PERMISSION_DENIED) {
+        setDenied(true);
+        const message = positionErrorText(first);
+        setError(message);
+        return { fix: null, error: message };
+      }
+      try {
+        // Second attempt accepts a cached or network-based fix, which arrives quickly without GPS hardware.
+        position = await requestPosition({ enableHighAccuracy: false, maximumAge: 60_000, timeout: 10_000 });
+      } catch (secondError) {
+        const second = secondError as GeolocationPositionError;
+        const message = positionErrorText(second.code === second.PERMISSION_DENIED ? second : first);
+        if (second.code === second.PERMISSION_DENIED) setDenied(true);
+        setError(message);
+        return { fix: null, error: message };
+      }
+    }
+
+    const next = toFix(position);
+    setFix(next);
+    setDenied(false);
+    setError(null);
+    return { fix: next, error: null };
   }, []);
 
   const locateByIp = useCallback(async (): Promise<IpLocateResult> => {
