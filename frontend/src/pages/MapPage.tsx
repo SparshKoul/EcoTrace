@@ -18,19 +18,21 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [userPoint, setUserPoint] = useState<GeoPoint | null>(null);
   const [locating, setLocating] = useState(false);
   const [askForLocation, setAskForLocation] = useState(true);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const useMyLocation = async () => {
     setLocating(true);
+    setLocationError(null);
     const result = await locate();
     setLocating(false);
-    if (result) {
-      const point = { lat: result.lat, lng: result.lng };
+    if (result.fix) {
+      const point = { lat: result.fix.lat, lng: result.fix.lng };
       setUserPoint(point);
       setFocusPoint(point);
       setAskForLocation(false);
-      notify(`Map centred on your location (±${Math.round(result.accuracyM)} m).`);
+      notify(`Map centred on your location (±${Math.round(result.fix.accuracyM)} m).`);
     } else {
-      notify('Location unavailable. Allow location access in your browser, then try again.');
+      setLocationError(result.error ?? 'Location is unavailable right now.');
     }
   };
 
@@ -70,11 +72,18 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
             We'll ask your device for its current location and centre the map there. You can stay on the Chitkara
             University view instead.
           </p>
+          {locationError && (
+            <p role="alert" className="mt-3 rounded-xl bg-[#fde8e6] px-3 py-2 text-sm font-semibold text-[#b3261e]">
+              {locationError}
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="sun" onClick={() => void useMyLocation()} disabled={locating}>
-              {locating ? 'Locating…' : 'Use my current location'}
+              {locating ? 'Locating…' : locationError ? 'Try again' : 'Use my current location'}
             </Button>
-            <Button variant="outline" onClick={() => setAskForLocation(false)}>Not now</Button>
+            <Button variant="outline" onClick={() => setAskForLocation(false)}>
+              {locationError ? 'Keep Chitkara view' : 'Not now'}
+            </Button>
           </div>
         </div>
       )}

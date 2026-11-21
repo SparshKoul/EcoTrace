@@ -198,7 +198,8 @@ frontend/
 
 - On first load the map starts at Chitkara University and shows a **"See sites near you?"** card. Choosing **"Use my current location"** calls `navigator.geolocation.getCurrentPosition` (which prompts the browser for location permission), then flies the map to the returned coordinates at a closer zoom and drops a blue "You are here" marker. **"Not now"** keeps the default view.
 - A **"◎ My location"** button stays in the top overlay so the citizen can re-centre at any time.
-- The one-shot request lives in `useGps.locate()` and is exposed through `AppContext`; the continuous `watchPosition` used by capture gates is separate. Denied or unavailable location is reported through a user-facing toast instead of silently failing.
+- The one-shot request lives in `useGps.locate()` and is exposed through `AppContext`; the continuous `watchPosition` used by capture gates is separate.
+- If location is denied, unavailable, or blocked by an embedded preview / non-HTTPS context, the prompt shows the **specific reason inline** with **Try again** and **Keep Chitkara view** actions — no dead-end toast. Browsers only expose geolocation on `localhost` or HTTPS, and embedded previews often withhold it entirely.
 - Mock sites are generated around the same default centre, so the pilot view always has sample reports before a real backend is connected.
 
 ### Markers and severity

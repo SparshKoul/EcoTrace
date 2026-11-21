@@ -2,6 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { RULES } from '../config/rules';
 import type { GpsFix } from '../types';
 
+export interface LocateResult {
+  readonly fix: GpsFix | null;
+  /** A human-readable reason when no fix was obtained, null on success. */
+  readonly error: string | null;
+}
+
 export interface GpsState {
   readonly fix: GpsFix | null;
   readonly denied: boolean;
@@ -9,7 +15,7 @@ export interface GpsState {
   readonly error: string | null;
   readonly refresh: () => void;
   /** Explicit one-shot request used by the "Use my current location" action. */
-  readonly locate: () => Promise<GpsFix | null>;
+  readonly locate: () => Promise<LocateResult>;
 }
 
 const toFix = (position: GeolocationPosition): GpsFix => {
@@ -22,6 +28,16 @@ const toFix = (position: GeolocationPosition): GpsFix => {
   };
 };
 
+const positionErrorText = (error: GeolocationPositionError): string => {
+  if (error.code === error.PERMISSION_DENIED) {
+    return 'Location access is blocked. Allow it for this site in your browser settings, then try again.';
+  }
+  if (error.code === error.TIMEOUT) {
+    return 'Getting a GPS fix took too long. Move outdoors and try again.';
+  }
+  return 'We could not get a GPS fix. Check that location services are on, then try again.';
+};
+
 /** FR-1.2: a continuous high-accuracy watch. Acceptance is decided by the capture gates, not here. */
 export function useGps(): GpsState {
   const [fix, setFix] = useState<GpsFix | null>(null);
@@ -32,12 +48,19 @@ export function useGps(): GpsState {
 
   const refresh = useCallback(() => setNonce((value) => value + 1), []);
 
-  const locate = useCallback((): Promise<GpsFix | null> => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setDenied(true);
-      setError('This device has no geolocation support.');
-      return Promise.resolve(null);
+  const locate = useCallback((): Promise<LocateResult> => {
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      const message = 'Location needs a secure context. Open this app on localhost or over HTTPS.';
+      setError(message);
+      return Promise.resolve({ fix: null, error: message });
     }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      const message = 'This browser or preview does not expose geolocation. You can keep the Chitkara University view, or open the app in a normal browser tab.';
+      setDenied(true);
+      setError(message);
+      return Promise.resolve({ fix: null, error: message });
+    }
+
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -45,16 +68,13 @@ export function useGps(): GpsState {
           setFix(next);
           setDenied(false);
           setError(null);
-          resolve(next);
+          resolve({ fix: next, error: null });
         },
         (positionError) => {
-          if (positionError.code === positionError.PERMISSION_DENIED) {
-            setDenied(true);
-            setError('Location access was blocked. Allow it in your browser settings.');
-          } else {
-            setError('Could not get your location. Try again outdoors.');
-          }
-          resolve(null);
+          const message = positionErrorText(positionError);
+          if (positionError.code === positionError.PERMISSION_DENIED) setDenied(true);
+          setError(message);
+          resolve({ fix: null, error: message });
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
       );
@@ -65,7 +85,6 @@ export function useGps(): GpsState {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setDenied(true);
       setLoading(false);
-      setError('This device has no geolocation support.');
       return;
     }
 
@@ -79,15 +98,7 @@ export function useGps(): GpsState {
         setError(null);
         setLoading(false);
       },
-      (positionError) => {
-        setLoading(false);
-        if (positionError.code === positionError.PERMISSION_DENIED) {
-          setDenied(true);
-          setError('Location access was blocked. Allow it to submit a report.');
-        } else {
-          setError('Location is unavailable right now. Move outdoors and try again.');
-        }
-      },
+      () => setLoading(false),
       {
         enableHighAccuracy: true,
         maximumAge: Math.min(5_000, RULES.GPS_MAX_AGE_MS),
