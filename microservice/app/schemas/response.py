@@ -70,11 +70,14 @@ class SiglipSummary(BaseModel):
 
 
 class BedrockSummary(BaseModel):
-    """Placeholder summary — populated from Phase 3 onward."""
+    """Vision-judge summary (Azure Foundry, Bedrock-compatible shape)."""
 
     available: bool = False
-    judgement: Optional[str] = None
+    judgement: Optional[str] = None  # YES | NO | UNCERTAIN | UNKNOWN
     reason: Optional[str] = None
+    category: Optional[str] = None
+    model: Optional[str] = None
+    error: Optional[str] = None
 
 
 class DecisionResult(str):

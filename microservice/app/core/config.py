@@ -70,7 +70,17 @@ class Settings(BaseSettings):
     # Gaussian kernel (odd; normalised at use) for blurring faces & plates.
     privacy_blur_kernel: int = Field(default=51, ge=3, le=301)
 
-    # --- Bedrock -----------------------------------------------------------
+    # --- Azure AI Foundry / OpenAI vision judge ---------------------------
+    azure_judge_enabled: bool = True  # local endpoint + key from .env
+    azure_foundry_endpoint: str = ""  # project URL or resource base URL
+    azure_foundry_key: str = ""
+    azure_foundry_deployment: str = "gpt-5-mini"
+    azure_foundry_api_version: str = "2025-01-01-preview"
+    azure_judge_timeout_seconds: Seconds = 45.0
+    azure_judge_max_completion_tokens: int = Field(default=1500, ge=100, le=8000)
+    azure_judge_reasoning_effort: str = "low"
+
+    # --- Bedrock (kept for compatibility, disabled) -----------------------
     bedrock_enabled: bool = False
     bedrock_model_id: str = "amazon.nova-lite-v1:0"
     bedrock_max_tokens: int = Field(default=512, ge=1, le=8192)

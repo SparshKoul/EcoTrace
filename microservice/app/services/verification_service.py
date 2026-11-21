@@ -22,6 +22,7 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.schemas.request import ReportType
 from app.schemas.response import (
+    BedrockSummary,
     Decision,
     Detection,
     DetectResponse,
@@ -163,6 +164,20 @@ class VerificationService:
                     error=classifier.load_error,
                 )
 
+        # --- Azure Foundry vision judge (concurrent with SigLIP above) ----- #
+        judge_summary = BedrockSummary()
+        judge = self._registry.azure_judge
+        if judge is not None and getattr(judge, "available", False):
+            jr = await bounded(judge.judge, encode_jpeg(processed))
+            judge_summary = BedrockSummary(
+                available=jr.available,
+                judgement=jr.judgement,
+                reason=jr.reason,
+                category=jr.category,
+                model=jr.model,
+                error=jr.error,
+            )
+
         # --- Decision ------------------------------------------------------- #
         is_waste_detected = bool(detections)
         waste_category = report_type.value  # replaced by the Phase 5 engine
@@ -187,6 +202,7 @@ class VerificationService:
             rekognition=rek_summary,
             privacy=privacy_summary,
             siglip=siglip,
+            bedrock=judge_summary,
             decision=decision,
             model_versions=ModelVersions(**versions),
         )

@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.models.siglip_classifier import SiglipClassifier
 from app.models.yolo_detector import YoloDetector
+from app.services.azure_judge_service import AzureFoundryJudge
 from app.services.privacy_service import PrivacyService
 from app.services.rekognition_service import RekognitionService
 
@@ -32,6 +33,7 @@ class ModelRegistry:
     siglip: Any = None
     rekognition: Optional[RekognitionService] = None
     bedrock: Any = None
+    azure_judge: Any = None
     decision_engine: Any = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -42,7 +44,7 @@ class ModelRegistry:
             status["yolo"] = self.yolo.status().model_dump()
         else:
             status["yolo"] = {"available": False, "reason": "not_loaded"}
-        for name, component in (("bedrock", self.bedrock),):
+        for name, component in (("bedrock", self.bedrock), ("azure_judge", self.azure_judge)):
             available = bool(getattr(component, "available", False)) if component else False
             status[name] = {"available": available}
         status["rekognition"] = {"available": self.rekognition is not None}
@@ -114,7 +116,15 @@ def load_models(settings: Optional[Settings] = None) -> ModelRegistry:
     else:
         logger.info("SigLIP 2 disabled via configuration.")
 
-    # Later phases attach bedrock / decision engine here.
+    # --- Azure AI Foundry vision judge ------------------------------------
+    if settings.azure_judge_enabled:
+        judge = AzureFoundryJudge(settings)
+        registry.azure_judge = judge
+        logger.info("Azure Foundry judge configured (available=%s, deployment=%s).", judge.available, settings.azure_foundry_deployment)
+    else:
+        logger.info("Azure judge disabled via configuration.")
+
+    # Later phases attach the decision engine here.
 
     _registry = registry
     return registry

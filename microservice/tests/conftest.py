@@ -44,6 +44,7 @@ TEST_SETTINGS = Settings(
     rekognition_enabled=False,  # no AWS calls in unit tests
     bedrock_enabled=False,
     siglip_enabled=False,
+    azure_judge_enabled=False,  # no real HTTP in unit tests
     aws_region="ap-south-1",
     original_image_dir=tempfile.mkdtemp(prefix="ecotrace-orig-"),
     processed_image_dir=tempfile.mkdtemp(prefix="ecotrace-proc-"),
