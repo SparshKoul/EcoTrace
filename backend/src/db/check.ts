@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const tables = result.rows.map((row) => row.table_name);
   console.log(`Tables in public schema (${tables.length}): ${tables.join(", ") || "none"}`);
 
-  const required = ["sites", "reports", "notes", "area_scores", "cleanup_claims", "site_backers", "letters", "site_votes", "photo_flags", "scan_sessions", "scan_frames"];
+  const required = ["users", "sites", "reports", "notes", "area_scores", "cleanup_claims", "site_backers", "letters", "site_votes", "photo_flags", "scan_sessions", "scan_frames"];
   const missing = required.filter((table) => !tables.includes(table));
   if (missing.length > 0) {
     console.error(`❌ Missing tables: ${missing.join(", ")}. Run npm run db:migrate.`);

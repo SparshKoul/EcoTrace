@@ -28,7 +28,13 @@ Then apply the schema and verify:
 npm run db:setup     # runs db:migrate + db:check
 ```
 
-`db:migrate` applies `src/db/schema.sql` idempotently (all `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`). `db:check` verifies connectivity, lists public tables, and fails if any EcoTrace table is missing. Neither command prints credentials — only the database host. Health is also exposed at `GET /health` on the running server.
+`db:migrate` applies `src/db/schema.sql` idempotently (all `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`). `db:check` verifies connectivity, lists public tables, and fails if any EcoTrace table is missing (12 tables including `users`). Neither command prints credentials — only the database host. Health is also exposed at `GET /health` on the running server.
+
+### Accounts
+
+Supabase Auth owns credentials in `auth.users`; the public `users` table stores app-level profile fields (`email`, `full_name`, `role`, timestamps) linked one-to-one by id. A Postgres trigger `on_auth_user_created` creates the profile row automatically, and `AuthService` also upserts it on sign-up/sign-in. Existing auth users are backfilled by the migration. RLS is enabled on `public.users` so a signed-in user can read/update only their own row via the anon key; the backend's service-role/direct connection bypasses it.
+
+Endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/signout`. Routes that accept a Bearer token derive the user id from the session.
 
 Schema notes for Supabase: UUID defaults use PostgreSQL's built-in `gen_random_uuid()`, so no extension creation or elevated privileges are required.
 
@@ -241,4 +247,4 @@ Phase 5 smoke test: the ward score was locked (`score: null`, `needed: 10`) befo
 
 `npm audit` reports 0 vulnerabilities (zod was upgraded to 4.6.7 to clear a DoS advisory; the only required code change was `PORT: z.string().transform(Number).default(8000)` in `src/config/env.ts`).
 
-The full Phase 3–5 flow was also verified against a **live Supabase database**: `npm run db:setup` created all 11 tables, `GET /health` reported `database.connected: true`, report ingestion wrote real UUID rows, and cleanup claims, letters, notes, votes, flags, area scores, rankings, share cards and scan sessions/frames all persisted. Pseudorandom prefixed IDs were replaced with `randomUUID()` so inserts into UUID columns succeed.
+The full Phase 3–5 flow was also verified against a **live Supabase database**: `npm run db:setup` created all 12 tables (including `users`), `GET /health` reported `database.connected: true`, report ingestion wrote real UUID rows, and cleanup claims, letters, notes, votes, flags, area scores, rankings, share cards and scan sessions/frames all persisted. Pseudorandom prefixed IDs were replaced with `randomUUID()` so inserts into UUID columns succeed.

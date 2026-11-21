@@ -159,3 +159,52 @@ CREATE TABLE IF NOT EXISTS scan_frames (
 );
 
 CREATE INDEX IF NOT EXISTS idx_scan_frames_session ON scan_frames (session_id, t_ms);
+
+-- 11. Public user profiles, linked one-to-one to Supabase Auth (auth.users).
+-- Supabase Auth still owns credentials; this table holds app-level profile fields.
+CREATE TABLE IF NOT EXISTS public.users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  full_name TEXT,
+  role VARCHAR(20) NOT NULL DEFAULT 'citizen', -- citizen, authority, admin
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email);
+
+-- Automatically create a profile whenever a Supabase Auth user is created.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.users (id, email, full_name)
+  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data ->> 'full_name')
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Backfill profiles for accounts created before this table existed.
+INSERT INTO public.users (id, email, full_name)
+SELECT id, email, raw_user_meta_data ->> 'full_name'
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
+
+-- Optional: let signed-in users read/update their own profile via the anon key.
+-- The backend uses the service-role key / direct Postgres connection and bypasses RLS.
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can read own profile" ON public.users;
+CREATE POLICY "Users can read own profile" ON public.users
+  FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
+CREATE POLICY "Users can update own profile" ON public.users
+  FOR UPDATE USING (auth.uid() = id);
