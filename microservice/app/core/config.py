@@ -56,10 +56,19 @@ class Settings(BaseSettings):
     yolo_max_detections: int = Field(default=100, ge=1, le=1000)
 
     # --- Rekognition -------------------------------------------------------
-    rekognition_enabled: bool = False
-    aws_region: str = "us-east-1"
+    rekognition_enabled: bool = True
+    # Mumbai — lowest latency from India; Rekognition & Bedrock available.
+    aws_region: str = "ap-south-1"
     aws_rekognition_max_labels: int = Field(default=30, ge=1, le=200)
     aws_rekognition_min_confidence: Probability = 0.55
+    # Bounded retries/timeouts so a hung AWS call fails inside the request budget.
+    aws_max_attempts: int = Field(default=3, ge=1, le=10)
+    aws_connect_timeout_seconds: Seconds = 3.0
+    aws_read_timeout_seconds: Seconds = 10.0
+
+    # --- Privacy ------------------------------------------------------------
+    # Gaussian kernel (odd; normalised at use) for blurring faces & plates.
+    privacy_blur_kernel: int = Field(default=51, ge=3, le=301)
 
     # --- Bedrock -----------------------------------------------------------
     bedrock_enabled: bool = False

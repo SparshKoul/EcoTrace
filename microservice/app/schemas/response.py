@@ -25,11 +25,34 @@ class YoloStatus(BaseModel):
     reason: Optional[str] = None
 
 
+class RekLabel(BaseModel):
+    """A label detected by Amazon Rekognition DetectLabels (confidence 0..1)."""
+
+    name: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
 class RekognitionSummary(BaseModel):
-    """Placeholder summary — populated from Phase 2 onward."""
+    """Rekognition evidence: moderation is reported separately from waste
+    verification and never decides the waste verdict on its own."""
 
     available: bool = False
-    moderation_status: Optional[str] = None
+    moderation_status: Optional[str] = None  # safe | flagged | unavailable
+    moderation_labels: list[str] = Field(default_factory=list)
+    labels: list[RekLabel] = Field(default_factory=list)
+    faces_detected: int = 0
+    text_detections: int = 0
+    model_version: Optional[str] = None
+    error: Optional[str] = None  # throttled | access_denied | timeout | ...
+
+
+class PrivacySummary(BaseModel):
+    """Result of the privacy pass: what was blurred and what was stored."""
+
+    faces_blurred: int = 0
+    plates_blurred: int = 0
+    original_stored: bool = False
+    processed_stored: bool = False
 
 
 class SiglipSummary(BaseModel):
@@ -68,6 +91,7 @@ class ModelVersions(BaseModel):
 
     detector: Optional[str] = None
     classifier: Optional[str] = None
+    rekognition: Optional[str] = None
 
 
 class VerifyResponse(BaseModel):
@@ -80,6 +104,7 @@ class VerifyResponse(BaseModel):
     waste_category: Optional[str] = None
     detections: list[Detection] = Field(default_factory=list)
     rekognition: RekognitionSummary = Field(default_factory=RekognitionSummary)
+    privacy: PrivacySummary = Field(default_factory=PrivacySummary)
     siglip: SiglipSummary = Field(default_factory=SiglipSummary)
     bedrock: BedrockSummary = Field(default_factory=BedrockSummary)
     decision: Decision
@@ -129,7 +154,9 @@ class ModelInfoResponse(BaseModel):
 __all__ = [
     "Detection",
     "YoloStatus",
+    "RekLabel",
     "RekognitionSummary",
+    "PrivacySummary",
     "SiglipSummary",
     "BedrockSummary",
     "Decision",

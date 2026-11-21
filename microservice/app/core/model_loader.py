@@ -14,6 +14,8 @@ from typing import Any, Optional
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.models.yolo_detector import YoloDetector
+from app.services.privacy_service import PrivacyService
+from app.services.rekognition_service import RekognitionService
 
 logger = get_logger(__name__)
 
@@ -24,9 +26,10 @@ class ModelRegistry:
 
     settings: Settings
     yolo: Optional[YoloDetector] = None
+    privacy: Optional[PrivacyService] = None
     # Populated by later phases:
     siglip: Any = None
-    rekognition: Any = None
+    rekognition: Optional[RekognitionService] = None
     bedrock: Any = None
     decision_engine: Any = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -41,7 +44,8 @@ class ModelRegistry:
         for name, component in (("siglip", self.siglip), ("bedrock", self.bedrock)):
             available = bool(getattr(component, "available", False)) if component else False
             status[name] = {"available": available}
-        status["rekognition"] = {"available": bool(self.settings.rekognition_enabled)}
+        status["rekognition"] = {"available": self.rekognition is not None}
+        status["privacy"] = {"available": self.privacy is not None}
         return status
 
     def model_versions(self) -> dict[str, Optional[str]]:
@@ -77,7 +81,22 @@ def load_models(settings: Optional[Settings] = None) -> ModelRegistry:
     else:
         logger.info("YOLO detector disabled via configuration.")
 
-    # Later phases attach siglip / rekognition / bedrock / decision engine here.
+    # --- Privacy (local, always available) ---------------------------------
+    registry.privacy = PrivacyService(settings)
+
+    # --- Rekognition -------------------------------------------------------
+    if settings.rekognition_enabled:
+        try:
+            registry.rekognition = RekognitionService.build(settings)
+            logger.info("Rekognition client initialised (region=%s).", settings.aws_region)
+        except Exception as exc:
+            # Missing credentials must never prevent startup; degrade instead.
+            registry.rekognition = None
+            logger.warning("Rekognition unavailable: %s", exc)
+    else:
+        logger.info("Rekognition disabled via configuration.")
+
+    # Later phases attach siglip / bedrock / decision engine here.
 
     _registry = registry
     return registry

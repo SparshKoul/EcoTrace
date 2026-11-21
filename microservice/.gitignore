@@ -37,3 +37,6 @@ logs/
 .idea/
 .vscode/
 .DS_Store
+
+# --- Reference project ---
+EcoTracerefernce/

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
@@ -40,9 +41,12 @@ TEST_SETTINGS = Settings(
     internal_service_key="",  # auth disabled in unit tests
     max_upload_bytes=512 * 1024,  # 512 KiB cap for oversized-file tests
     yolo_enabled=False,  # real YOLO never loads in unit tests
-    rekognition_enabled=False,
+    rekognition_enabled=False,  # no AWS calls in unit tests
     bedrock_enabled=False,
     siglip_enabled=False,
+    aws_region="ap-south-1",
+    original_image_dir=tempfile.mkdtemp(prefix="ecotrace-orig-"),
+    processed_image_dir=tempfile.mkdtemp(prefix="ecotrace-proc-"),
 )
 
 
@@ -93,12 +97,77 @@ class FakeYoloDetector:
         )
 
 
-def make_registry(detector: Any = None) -> ModelRegistry:
-    """Build a registry with a fake detector (default: one bottle detection)."""
+class FakeRekognition:
+    """Deterministic Rekognition fake — no boto3 client, no AWS credentials.
+
+    Mirrors the interface the verification service calls; all methods are
+    synchronous (the service runs them in a threadpool).
+    """
+
+    def __init__(
+        self,
+        *,
+        moderation_status: str = "safe",
+        moderation_error: Optional[str] = None,
+        labels_error: Optional[str] = None,
+        face_error: Optional[str] = None,
+        text_error: Optional[str] = None,
+        faces: tuple = (),
+        texts: tuple = (),
+        labels: tuple = (),
+    ) -> None:
+        self._status = moderation_status
+        self._moderation_error = moderation_error
+        self._labels_error = labels_error
+        self._face_error = face_error
+        self._text_error = text_error
+        self._faces = faces
+        self._texts = texts
+        self._labels = labels
+        self.calls: list[str] = []
+
+    def detect_moderation(self, source: bytes):
+        from app.services.rekognition_service import ModerationResult
+
+        self.calls.append("moderation")
+        status = "unavailable" if self._moderation_error else self._status
+        return ModerationResult(status=status, error=self._moderation_error)
+
+    def detect_faces(self, source: bytes, size: tuple[int, int]):
+        from app.services.rekognition_service import FaceResult
+
+        self.calls.append("faces")
+        return FaceResult(faces=self._faces, error=self._face_error)
+
+    def detect_text(self, source: bytes, size: tuple[int, int]):
+        from app.services.rekognition_service import TextResult
+
+        self.calls.append("text")
+        return TextResult(items=self._texts, error=self._text_error)
+
+    def detect_labels(self, source: bytes):
+        from app.services.rekognition_service import LabelResult
+
+        self.calls.append("labels")
+        return LabelResult(labels=self._labels, model_version="3.0-fake", error=self._labels_error)
+
+
+def make_registry(
+    detector: Any = None,
+    *,
+    rekognition: Any = None,
+    privacy: bool = True,
+) -> ModelRegistry:
+    """Build a registry with fakes (default: one bottle detection, no AWS)."""
     registry = load_models(TEST_SETTINGS)
-    if detector is None:
-        detector = FakeYoloDetector()
-    registry.yolo = detector
+    registry.yolo = detector if detector is not None else FakeYoloDetector()
+    registry.rekognition = rekognition
+    if not privacy:
+        registry.privacy = None
+    elif registry.privacy is None:
+        from app.services.privacy_service import PrivacyService
+
+        registry.privacy = PrivacyService(TEST_SETTINGS)
     return registry
 
 
@@ -161,6 +230,7 @@ def fake_detector() -> FakeYoloDetector:
 __all__ = [
     "TEST_SETTINGS",
     "FakeYoloDetector",
+    "FakeRekognition",
     "make_registry",
     "make_test_image",
     "make_large_image_bytes",
