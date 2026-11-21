@@ -31,7 +31,7 @@ export const RULES = {
   WALKING_MAX_MS: 10_000,
 } as const;
 
-export const API_BASE_URL = readString('VITE_API_BASE_URL', 'http://localhost:3000');
+export const API_BASE_URL = readString('VITE_API_BASE_URL', 'http://localhost:8000');
 
 export const USE_MOCK_API = readString('VITE_USE_MOCK_API', 'true').toLowerCase() === 'true';
 

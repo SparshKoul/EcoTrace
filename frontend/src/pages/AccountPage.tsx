@@ -1,9 +1,38 @@
+import { useState, type FormEvent } from 'react';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
+import { USE_MOCK_API } from '../config/rules';
 import { useApp } from '../state/AppContext';
 
+type Mode = 'login' | 'signup';
+
 export function AccountPage() {
-  const { signedIn, setSignedIn, online, notify } = useApp();
+  const {
+    user, signedIn, authLoading, online, notify,
+    signInUser, signUpUser, signOutUser,
+  } = useApp();
+  const [mode, setMode] = useState<Mode>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      if (mode === 'signup') await signUpUser(email, password, fullName || undefined);
+      else await signInUser(email, password);
+      setPassword('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Authentication failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="mx-auto w-full max-w-2xl space-y-5 p-4 pb-28" aria-labelledby="account-heading">
       <header>
@@ -12,16 +41,99 @@ export function AccountPage() {
       </header>
 
       <div className="eco-card space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <span className="font-bold">Session</span>
-          <Chip tone={signedIn ? 'accent' : 'neutral'}>{signedIn ? 'Signed in' : 'Signed out'}</Chip>
+          <Chip tone={signedIn ? 'accent' : 'neutral'}>
+            {authLoading ? 'Checking…' : signedIn ? 'Signed in' : 'Signed out'}
+          </Chip>
         </div>
-        <p className="text-sm text-muted">
-          Signing in is required to submit reports and vote on sites. In this frontend-only preview the session is local.
-        </p>
-        <Button variant="outline" onClick={() => { setSignedIn(!signedIn); notify(signedIn ? 'Signed out locally.' : 'Signed in locally.'); }}>
-          {signedIn ? 'Sign out' : 'Sign in'}
-        </Button>
+
+        {authLoading && <p className="text-sm text-muted">Restoring your session…</p>}
+
+        {!authLoading && user && (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Signed in as <strong>{user.fullName || user.email}</strong>
+            </p>
+            <p className="text-xs text-muted">{user.email}</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void signOutUser().catch((cause: unknown) => {
+                  notify(cause instanceof Error ? cause.message : 'Sign out failed.');
+                });
+              }}
+            >
+              Sign out
+            </Button>
+          </div>
+        )}
+
+        {!authLoading && !user && (
+          <form onSubmit={(event) => void submit(event)} className="space-y-3">
+            <p className="text-sm text-muted">
+              {USE_MOCK_API
+                ? 'Demo mode: any email and a 6+ character password create a local account.'
+                : 'Sign in or create an account to submit reports and back sites. Accounts are managed by Supabase.'}
+            </p>
+            <div className="flex gap-2" role="tablist" aria-label="Account mode">
+              {(['login', 'signup'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === value}
+                  onClick={() => { setMode(value); setError(null); }}
+                  className={`min-h-10 flex-1 rounded-full px-3 text-sm font-bold ${mode === value ? 'bg-accent text-white' : 'bg-tile text-muted'}`}
+                >
+                  {value === 'login' ? 'Sign in' : 'Sign up'}
+                </button>
+              ))}
+            </div>
+            {mode === 'signup' && (
+              <label className="block">
+                <span className="eco-label">Full name</span>
+                <input
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  autoComplete="name"
+                  className="mt-1 w-full rounded-xl border-2 border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+                />
+              </label>
+            )}
+            <label className="block">
+              <span className="eco-label">Email</span>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                className="mt-1 w-full rounded-xl border-2 border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+            </label>
+            <label className="block">
+              <span className="eco-label">Password</span>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                className="mt-1 w-full rounded-xl border-2 border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+            </label>
+            {error && (
+              <p role="alert" className="rounded-xl bg-[#fde8e6] px-3 py-2 text-sm font-semibold text-[#b3261e]">
+                {error}
+              </p>
+            )}
+            <Button type="submit" variant="sun" disabled={busy} className="w-full">
+              {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+            </Button>
+          </form>
+        )}
       </div>
 
       <div className="eco-card space-y-2">

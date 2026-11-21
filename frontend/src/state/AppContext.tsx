@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { useGps } from '../hooks/useGps';
 import { fetchActivity, fetchAreas, fetchSites, submitReport } from '../services/api';
+import { getMe, signIn, signOut, signUp, type AuthUser } from '../services/auth';
 import type { ActivityItem, Area, ReportReceipt, ReportSubmission, Site } from '../types';
 
 interface AppContextValue {
@@ -22,9 +23,13 @@ interface AppContextValue {
   readonly locate: ReturnType<typeof useGps>['locate'];
   readonly locateByIp: ReturnType<typeof useGps>['locateByIp'];
   readonly online: boolean;
+  readonly user: AuthUser | null;
   readonly signedIn: boolean;
+  readonly authLoading: boolean;
   readonly toast: string | null;
-  setSignedIn: (value: boolean) => void;
+  signInUser: (email: string, password: string) => Promise<void>;
+  signUpUser: (email: string, password: string, fullName?: string) => Promise<void>;
+  signOutUser: () => Promise<void>;
   notify: (message: string) => void;
   refresh: () => Promise<void>;
   sendReport: (submission: ReportSubmission) => Promise<ReportReceipt>;
@@ -39,7 +44,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(typeof navigator === 'undefined' || navigator.onLine);
-  const [signedIn, setSignedIn] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,6 +57,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getMe()
+      .then((restored) => { if (active) setUser(restored); })
+      .finally(() => { if (active) setAuthLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const refresh = useCallback(async () => {
@@ -77,6 +91,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => setToast((current) => (current === message ? null : current)), 5_000);
   }, []);
 
+  const signInUser = useCallback(async (email: string, password: string) => {
+    const result = await signIn(email, password);
+    setUser(result);
+    notify(`Signed in as ${result.email}.`);
+    await refresh();
+  }, [notify, refresh]);
+
+  const signUpUser = useCallback(async (email: string, password: string, fullName?: string) => {
+    const result = await signUp(email, password, fullName);
+    setUser(result);
+    notify(`Account created for ${result.email}.`);
+    await refresh();
+  }, [notify, refresh]);
+
+  const signOutUser = useCallback(async () => {
+    await signOut();
+    setUser(null);
+    notify('Signed out.');
+  }, [notify]);
+
   const sendReport = useCallback(async (submission: ReportSubmission) => {
     const receipt = await submitReport(submission);
     await refresh();
@@ -85,9 +119,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextValue>(() => ({
     sites, areas, activity, loading,
-    fix: gps.fix, gpsDenied: gps.denied, gpsLoading: gps.loading, locate: gps.locate, locateByIp: gps.locateByIp,
-    online, signedIn, toast, setSignedIn, notify, refresh, sendReport,
-  }), [sites, areas, activity, loading, gps.fix, gps.denied, gps.loading, gps.locate, gps.locateByIp, online, signedIn, toast, notify, refresh, sendReport]);
+    fix: gps.fix, gpsDenied: gps.denied, gpsLoading: gps.loading,
+    locate: gps.locate, locateByIp: gps.locateByIp,
+    online, user, signedIn: user !== null, authLoading, toast,
+    signInUser, signUpUser, signOutUser, notify, refresh, sendReport,
+  }), [sites, areas, activity, loading, gps.fix, gps.denied, gps.loading,
+    gps.locate, gps.locateByIp, online, user, authLoading, toast,
+    signInUser, signUpUser, signOutUser, notify, refresh, sendReport]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

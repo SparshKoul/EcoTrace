@@ -71,8 +71,8 @@ Copy `.env.example` to `.env.local`. All variables are optional.
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `VITE_API_BASE_URL` | `http://localhost:3000` | Base URL of the Fastify core API for all `/api/v1/*` calls |
-| `VITE_USE_MOCK_API` | `true` | When true, serves local sample sites/areas/activity and a sample complaint instead of calling the backend |
+| `VITE_API_BASE_URL` | `http://localhost:8000` | Base URL of the Fastify core API; auth calls go to `/api/auth/*` |
+| `VITE_USE_MOCK_API` | `true` | When true, serves local sample sites/areas/activity, a sample complaint and a local demo account instead of calling the backend |
 | `VITE_TILE_URL` | OpenStreetMap raster template | Map tile source; must contain `{s}`, `{z}`, `{x}`, `{y}` placeholders |
 | `VITE_TILE_ATTRIBUTION` | `© OpenStreetMap contributors` | Attribution rendered in the map corner |
 | `VITE_PILOT_LAT` | `30.5157` | Initial map centre latitude (Chitkara University, Rajpura, Punjab) |
@@ -255,7 +255,22 @@ services/api.submitReport()  →  POST /api/v1/reports  (multipart: type, mode, 
 202 { report_id, status: "PROCESSING" }  →  Activity list  →  refresh sites/areas
 ```
 
-**Mock mode** (`VITE_USE_MOCK_API=true`, default) replaces the network with local sample sites, areas, activity items and a complaint letter. The sample letter quotes are real exact-text clauses taken from the reference SWM 2026 corpus; in production the backend re-verifies every citation before the letter is shown. Sample evidence images are inline SVG placeholders labelled "sanitized" — no raw personal media is ever represented.
+## Accounts (Supabase Auth)
+
+The Account tab provides **Sign up / Sign in** with email and password. In real mode (`VITE_USE_MOCK_API=false`) these call the backend's Supabase-backed endpoints:
+
+| Action | Endpoint |
+| :--- | :--- |
+| Sign up | `POST /api/auth/signup` |
+| Sign in | `POST /api/auth/login` |
+| Restore session | `GET /api/auth/me` |
+| Sign out | `POST /api/auth/signout` |
+
+The access token is stored in `localStorage` and attached as `Authorization: Bearer <token>` to all API calls. A valid token also supplies the user id for report ingestion. The service-role key never reaches the frontend.
+
+`src/services/auth.ts` implements the client; `src/state/AppContext.tsx` restores the session on startup and exposes `user`, `signedIn`, `authLoading`, `signInUser`, `signUpUser` and `signOutUser`. Capture gates stay blocked until a user is signed in. In mock mode any email with a 6+ character password creates a local demo account so the UI remains testable without a backend.
+
+**Mock mode** (`VITE_USE_MOCK_API=true`, default) replaces the network with local sample sites, areas, activity items, a demo account and a complaint letter. The sample letter quotes are real exact-text clauses taken from the reference SWM 2026 corpus; in production the backend re-verifies every citation before the letter is shown. Sample evidence images are inline SVG placeholders labelled "sanitized" — no raw personal media is ever represented.
 
 The shared `EvidenceAnalysis` type in `src/types.ts` documents the response shape expected from `POST /internal/analyze-evidence`: `is_waste`, `confidence`, `waste_stream`, `severity`, `pii_blurred`, `sanitized_image_url`, `reject_reason`, `citations`. This gives `backend/` and `microservice/` a contract to implement against.
 
