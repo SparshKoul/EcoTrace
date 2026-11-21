@@ -73,6 +73,8 @@ export async function signUp(email: string, password: string, fullName?: string)
     password,
     email_confirm: true,
     user_metadata: { full_name: fullName ?? "" },
+    // Only accounts created through EcoTrace may sign in.
+    app_metadata: { ecotrace_account: true },
   });
   if (error || !data.user) throw new AuthError(error?.message ?? "Could not create account.");
   await ensureProfile(data.user.id, data.user.email ?? email, fullName);
@@ -91,6 +93,9 @@ export async function signIn(email: string, password: string): Promise<AuthResul
   if (error || !data.session || !data.user) {
     throw new AuthError(error?.message ?? "Invalid email or password.", 401);
   }
+  // Reject pre-existing Supabase users that were never registered by this app.
+  await getUserFromToken(data.session.access_token);
+
   const metadataName = data.user.user_metadata?.full_name;
   await ensureProfile(
     data.user.id,
@@ -103,6 +108,9 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 export async function getUserFromToken(token: string): Promise<AuthUser> {
   const { data, error } = await getSupabaseAdmin().auth.getUser(token);
   if (error || !data.user) throw new AuthError("Session is invalid or expired.", 401);
+  if (data.user.app_metadata?.ecotrace_account !== true) {
+    throw new AuthError("This account was not created in EcoTrace. Please sign up first.", 403);
+  }
   const metadataName = data.user.user_metadata?.full_name;
   const profile = await readProfile(data.user.id);
   return {

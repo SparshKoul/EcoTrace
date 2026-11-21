@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
-import { USE_MOCK_API } from '../config/rules';
 import { useApp } from '../state/AppContext';
 
 type Mode = 'login' | 'signup';
@@ -72,9 +71,8 @@ export function AccountPage() {
         {!authLoading && !user && (
           <form onSubmit={(event) => void submit(event)} className="space-y-3">
             <p className="text-sm text-muted">
-              {USE_MOCK_API
-                ? 'Demo mode: any email and a 6+ character password create a local account.'
-                : 'Sign in or create an account to submit reports and back sites. Accounts are managed by Supabase.'}
+              Create an account to submit reports and back sites. Accounts are real Supabase accounts —
+              existing users must sign up through this app before they can sign in.
             </p>
             <div className="flex gap-2" role="tablist" aria-label="Account mode">
               {(['login', 'signup'] as const).map((value) => (

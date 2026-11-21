@@ -36,6 +36,8 @@ Supabase Auth owns credentials in `auth.users`; the public `users` table stores 
 
 Endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/signout`. Routes that accept a Bearer token derive the user id from the session.
 
+Only accounts created through EcoTrace can sign in: `signup` stamps the Supabase user with `app_metadata.ecotrace_account = true`, and `login` / `me` reject users without that flag with `403 This account was not created in EcoTrace. Please sign up first.` Pre-existing Supabase users therefore cannot log in until they register through the app. Duplicate sign-ups for an existing email are rejected.
+
 Schema notes for Supabase: UUID defaults use PostgreSQL's built-in `gen_random_uuid()`, so no extension creation or elevated privileges are required.
 
 ### Storage scaffold
