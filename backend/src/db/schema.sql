@@ -167,9 +167,12 @@ CREATE TABLE IF NOT EXISTS public.users (
   email TEXT NOT NULL,
   full_name TEXT,
   role VARCHAR(20) NOT NULL DEFAULT 'citizen', -- citizen, authority, admin
+  password_hash TEXT, -- mirrored from auth.users.encrypted_password; never sent to clients
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email);
 
@@ -181,9 +184,12 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.users (id, email, full_name)
-  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data ->> 'full_name')
-  ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.users (id, email, full_name, password_hash)
+  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data ->> 'full_name', NEW.encrypted_password)
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    password_hash = EXCLUDED.password_hash,
+    updated_at = CURRENT_TIMESTAMP;
   RETURN NEW;
 END;
 $$;
@@ -194,10 +200,24 @@ AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Backfill profiles for accounts created before this table existed.
-INSERT INTO public.users (id, email, full_name)
-SELECT id, email, raw_user_meta_data ->> 'full_name'
+INSERT INTO public.users (id, email, full_name, password_hash)
+SELECT id, email, raw_user_meta_data ->> 'full_name', encrypted_password
 FROM auth.users
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  password_hash = EXCLUDED.password_hash,
+  updated_at = CURRENT_TIMESTAMP;
+
+-- Column-level protection: anon/authenticated clients can never read the hash.
+-- Guarded so the same SQL also runs on a plain local PostgreSQL without Supabase roles.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE SELECT (password_hash) ON public.users FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE SELECT (password_hash) ON public.users FROM authenticated;
+  END IF;
+END $$;
 
 -- Optional: let signed-in users read/update their own profile via the anon key.
 -- The backend uses the service-role key / direct Postgres connection and bypasses RLS.

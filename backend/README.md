@@ -38,6 +38,8 @@ Endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, 
 
 Only accounts created through EcoTrace can sign in: `signup` stamps the Supabase user with `app_metadata.ecotrace_account = true`, and `login` / `me` reject users without that flag with `403 This account was not created in EcoTrace. Please sign up first.` Pre-existing Supabase users therefore cannot log in until they register through the app. Duplicate sign-ups for an existing email are rejected.
 
+**Password storage:** Supabase Auth hashes passwords with bcrypt in `auth.users.encrypted_password`; plaintext is never stored or sent to this backend. `public.users.password_hash` mirrors that hash via the signup trigger/backfill for server-side audit only. Column-level `REVOKE SELECT (password_hash)` prevents `anon` and `authenticated` clients from reading it, and no API response includes it. A live test sign-up produced a `$2a$10$…` hash and contained no plaintext password.
+
 Schema notes for Supabase: UUID defaults use PostgreSQL's built-in `gen_random_uuid()`, so no extension creation or elevated privileges are required.
 
 ### Storage scaffold
