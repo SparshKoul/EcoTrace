@@ -80,6 +80,25 @@ def test_siglip_below_evidence_floor_confirms_rejection() -> None:
     assert body["is_waste_detected"] is False
 
 
+def test_exact_reported_case_judge_yes_no_yolo_boxes_not_rejected() -> None:
+    """Regression: the user's pasted response (judge YES, no detections,
+    SigLIP 0.205) must NEVER be REJECTED with 'no waste evidence'."""
+    body = _verify(
+        detections=[],
+        siglip=FakeSiglip(category="construction_waste", confidence=0.2050967663526535),
+        judge=FakeJudge(
+            judgement="YES",
+            reason="The image shows a large pile of mixed garbage and plastic in a landfill setting indicating a waste dump.",
+            category="a_waste_dump",
+        ),
+    )
+    assert body["bedrock"]["judgement"] == "YES"
+    assert body["is_waste_detected"] is True
+    assert body["status"] != "REJECTED", "Judge YES with no boxes must not be REJECTED"
+    assert any("Vision judge reports waste evidence" in r for r in body["decision"]["reasons"])
+    assert "No waste evidence detected by available models." not in body["decision"]["reasons"]
+
+
 def test_judge_yes_routes_to_review() -> None:
     body = _verify(
         detections=[],

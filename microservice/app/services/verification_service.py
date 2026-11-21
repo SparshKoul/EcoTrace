@@ -199,7 +199,7 @@ class VerificationService:
         judge_waste = judge_summary.available and judge_summary.judgement == "YES"
         is_waste_detected = yolo_waste or siglip_waste or judge_waste
         waste_category = report_type.value  # replaced by the Phase 5 engine
-        decision = self._decide(yolo_waste, yolo_error, siglip, judge)
+        decision = self._decide(yolo_waste, yolo_error, siglip, judge_summary)
         if moderation is not None and moderation.status == "flagged":
             # Moderation is *not* a waste verdict: flagged content must never
             # silently become an auto-rejection of the waste claim.
