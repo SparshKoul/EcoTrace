@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { GpsBadge } from '../components/ui/GpsBadge';
 import { PILOT_CENTRE, RULES, TYPE_COLOR, TYPE_LABEL } from '../config/rules';
+import { distanceMeters } from '../domain/geo';
 import type { IpLocateResult } from '../hooks/useGps';
 import type { Tab } from '../navigation';
 import { useApp } from '../state/AppContext';
@@ -21,6 +22,8 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [askForLocation, setAskForLocation] = useState(true);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [approxLabel, setApproxLabel] = useState<string | null>(null);
+
+  const awayFromSamples = focusPoint !== null && distanceMeters(focusPoint, PILOT_CENTRE) > 5_000;
 
   const applyApprox = (result: IpLocateResult, fallbackError: string | null) => {
     if (result.location) {
@@ -78,6 +81,7 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
           <GpsBadge />
           <Chip tone="accent">{sites.length} sites on map</Chip>
           {approxLabel && <Chip tone="warn">Approximate · {approxLabel}</Chip>}
+          {awayFromSamples && <Chip tone="neutral">Sample reports are near Chitkara only</Chip>}
           <button
             type="button"
             onClick={() => void useMyLocation()}
