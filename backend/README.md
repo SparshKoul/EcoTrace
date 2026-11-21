@@ -13,9 +13,30 @@ npm run typecheck
 npm run build
 ```
 
-Apply the schema when PostgreSQL is available: `npx tsx src/db/migrate.ts`.
+## Supabase setup
 
-If the database is unreachable, the Phase 3 routes fall back to an in-memory store seeded with site `site_demo_chitkara` at Chitkara University (`30.5157, 76.6592`), so every endpoint below can be exercised without infrastructure.
+Supabase is a hosted PostgreSQL database, so the backend keeps using `pg` + SQL — no ORM rewrite. Copy `.env.example` to `.env` and fill in:
+
+1. **`DATABASE_URL`** — Supabase → Project Settings → **Database → Connection string → URI**. Use the **transaction pooler** URL (port `6543`) for the running app; the direct `5432` URL also works for migrations. Replace `[YOUR-PASSWORD]` with your database password.
+2. **`SUPABASE_URL`** — Project Settings → API → Project URL.
+3. **`SUPABASE_ANON_KEY`** / **`SUPABASE_SERVICE_ROLE_KEY`** — Project Settings → API → Project API keys. The service-role key bypasses Row Level Security and is **server-only**; never put it in the frontend or commit `.env` (it is gitignored).
+4. TLS is auto-detected for Supabase hosts. Override with `DB_SSL=true` / `DB_SSL=false` if needed.
+
+Then apply the schema and verify:
+
+```bash
+npm run db:setup     # runs db:migrate + db:check
+```
+
+`db:migrate` applies `src/db/schema.sql` idempotently (all `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`). `db:check` verifies connectivity, lists public tables, and fails if any EcoTrace table is missing. Neither command prints credentials — only the database host. Health is also exposed at `GET /health` on the running server.
+
+Schema notes for Supabase: UUID defaults use PostgreSQL's built-in `gen_random_uuid()`, so no extension creation or elevated privileges are required.
+
+### Storage scaffold
+
+`src/db/supabase.ts` creates lazy Supabase clients and `src/services/storage/SupabaseStorage.ts` exposes `uploadRaw()` (private bucket) and `uploadSanitized()` (public bucket) for the PRD's dual-bucket isolation. These are ready for the ingestion pipeline; no media is uploaded automatically yet.
+
+If the database is unreachable, all Phase 3–5 routes fall back to an in-memory store seeded with site `site_demo_chitkara` at Chitkara University (`30.5157, 76.6592`), so every endpoint below can be exercised without infrastructure.
 
 ---
 
