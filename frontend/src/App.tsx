@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { BottomNav } from './components/layout/BottomNav';
 import { Toast } from './components/ui/Toast';
 import type { Tab } from './navigation';
-import { AccountPage } from './pages/AccountPage';
-import { ActivityPage } from './pages/ActivityPage';
-import { AreasPage } from './pages/AreasPage';
-import { CapturePanel } from './components/capture/CapturePanel';
-import { MapPage } from './pages/MapPage';
+
+// Pages are lazily loaded so heavy dependencies (leaflet, jspdf) are code-split
+// and only downloaded when the user opens the relevant tab.
+const MapPage = lazy(() => import('./pages/MapPage').then((m) => ({ default: m.MapPage })));
+const CapturePanel = lazy(() => import('./components/capture/CapturePanel').then((m) => ({ default: m.CapturePanel })));
+const AreasPage = lazy(() => import('./pages/AreasPage').then((m) => ({ default: m.AreasPage })));
+const ActivityPage = lazy(() => import('./pages/ActivityPage').then((m) => ({ default: m.ActivityPage })));
+const AccountPage = lazy(() => import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })));
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('map');
@@ -25,11 +28,22 @@ export default function App() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'map' && <MapPage onNavigate={setTab} />}
-        {tab === 'report' && <CapturePanel />}
-        {tab === 'areas' && <AreasPage />}
-        {tab === 'activity' && <ActivityPage />}
-        {tab === 'account' && <AccountPage />}
+        <Suspense
+          fallback={
+            <div className="grid h-full place-items-center p-8">
+              <div className="flex flex-col items-center gap-3 text-muted">
+                <span className="h-10 w-10 animate-spin rounded-full border-4 border-accent border-t-transparent" aria-hidden="true" />
+                <p className="text-sm font-semibold">Loading…</p>
+              </div>
+            </div>
+          }
+        >
+          {tab === 'map' && <MapPage onNavigate={setTab} />}
+          {tab === 'report' && <CapturePanel />}
+          {tab === 'areas' && <AreasPage />}
+          {tab === 'activity' && <ActivityPage />}
+          {tab === 'account' && <AccountPage />}
+        </Suspense>
       </main>
 
       <BottomNav active={tab} onChange={setTab} />
