@@ -40,3 +40,6 @@ logs/
 
 # --- Reference project ---
 EcoTracerefernce/
+
+# --- Local runtime storage (images) ---
+storage/
