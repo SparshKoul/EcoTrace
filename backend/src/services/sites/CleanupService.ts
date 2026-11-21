@@ -1,5 +1,6 @@
 /** Phase 3.1 / 3.5 — cleanup claim pipeline and AI validation orchestration. */
 
+import { randomUUID } from "node:crypto";
 import {
   applyCleanupDecision,
   canStartCleanup,
@@ -58,7 +59,7 @@ export async function startCleanup(input: StartCleanupInput): Promise<StartResul
 
   const now = new Date().toISOString();
   const claim: CleanupClaimRecord = {
-    id: `cln_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    id: randomUUID(),
     site_id: site.id,
     after_photo_url: input.afterPhotoUrl,
     uploader_id: input.uploaderId,

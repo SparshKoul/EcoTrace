@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS photo_flags (
   reporter_id TEXT NOT NULL,
   reason VARCHAR(50),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (photo_id, reporter_id)
+  UNIQUE (photo_id, reporter_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_photo_flags_photo ON photo_flags (photo_id);

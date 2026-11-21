@@ -74,7 +74,14 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
           `INSERT INTO sites (waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, status)
            VALUES ($1, $2, $3, $4, $5, $6, 1, 'open')
            RETURNING id`,
-          [wasteType, latitude, longitude, boundary.ward, boundary.mla, boundary.mp],
+          [
+            wasteType,
+            latitude,
+            longitude,
+            boundary.ward.name,
+            boundary.mla.constituencyName,
+            boundary.mp.constituencyName,
+          ],
         );
         siteId = newSiteResult.rows[0].id;
       }

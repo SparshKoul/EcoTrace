@@ -1,5 +1,6 @@
 /** Phase 5.3 — scan session orchestration with synchronised GPS frames. */
 
+import { randomUUID } from "node:crypto";
 import {
   checkFrame,
   scanProgress,
@@ -42,7 +43,7 @@ export async function addFrames(
     }
     const stored = {
       ...frame,
-      id: `frm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+      id: randomUUID(),
       session_id: sessionId,
     };
     await saveFrame(stored);

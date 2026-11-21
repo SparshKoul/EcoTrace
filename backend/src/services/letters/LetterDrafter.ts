@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 /**
  * Phase 3.2 — Civic letter drafting engine.
  * Generates a formal grievance to the Municipal Commissioner with MLA/MP in CC.
@@ -77,7 +79,7 @@ export function draftLetter(site: LetterSite): LetterDraft {
   ];
 
   return {
-    letter_id: `ltr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    letter_id: randomUUID(),
     site_id: site.id,
     channel: "local_body",
     to: `Municipal Commissioner, ${ulb}`,

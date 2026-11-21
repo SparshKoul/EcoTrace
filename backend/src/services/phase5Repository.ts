@@ -1,5 +1,6 @@
 /** Phase 5 persistence and aggregation: PostgreSQL when reachable, in-memory fallback otherwise. */
 
+import { randomUUID } from "node:crypto";
 import { query } from "../db/pool.js";
 import type { AreaKind } from "../domain/scores/AreaScores.js";
 import type { ScanFrameInput } from "../domain/scans/ScanSession.js";
@@ -88,7 +89,7 @@ export async function listAreaAggregates(kind: AreaKind): Promise<AreaAggregate[
 
 export async function startScan(userId?: string): Promise<StoredScanSession> {
   const session: StoredScanSession = {
-    id: `scn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    id: randomUUID(),
     user_id: userId,
     status: "active",
     started_at: new Date().toISOString(),
