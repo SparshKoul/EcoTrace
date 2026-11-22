@@ -33,21 +33,32 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     const authUser = await getRequestUser(request);
     const userId = authUser?.id ?? parseResult.data.userId;
 
-    // Persist photo to Supabase Storage bucket (ecotrace-sanitized-public)
+    // 1. Verify photo through AI service first
+    const aiResult = await aiVerifyClient.verifyPhoto(rawPhotoUrl, {
+      reportType: wasteType,
+      latitude,
+      longitude,
+    });
+
+    // Option 1: Civic Validation Pipeline - reject submissions judged as non-waste
+    if (aiResult.status === "REJECTED") {
+      return reply.status(422).send({
+        error: "AI_VERIFICATION_REJECTED",
+        message: aiResult.rejection_reason || "The submitted image was evaluated by AI and rejected as non-waste.",
+        details: {
+          status: aiResult.status,
+          rejectionReason: aiResult.rejection_reason,
+          auditSummary: aiResult.audit_summary,
+          detectedClasses: aiResult.detected_classes,
+        },
+      });
+    }
+
+    // 2. Persist verified photo to Supabase Storage bucket (ecotrace-sanitized-public)
     const photoUrl = await persistPhoto(rawPhotoUrl, "reports");
 
-    // 1. Resolve administrative boundaries (Ward, MLA, MP)
+    // 3. Resolve administrative boundaries (Ward, MLA, MP)
     const boundary = resolveBoundary({ latitude, longitude });
-
-    // 2. Verify through the AI microservice (YOLO26 + SigLIP 2 + privacy blur).
-    //    The client data URL is decoded server-side by the service, which also
-    //    stores the original privately and the blurred copy separately.
-    const aiResult = await aiVerifyClient.verifyImage(
-      rawPhotoUrl,
-      `rep-${Date.now().toString(36)}`,
-      wasteType,
-    );
-
     try {
       // 3. Check for 20m spatial clustering against existing open sites
       const sitesQuery = await query(`
@@ -118,7 +129,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
         longitude,
         aiResult.status === "ACCEPTED" || aiResult.is_waste_detected,
         aiResult.confidence,
-        aiResult.status === "ACCEPTED" ? "verified" : "needs_review",
+        aiResult.status === "ACCEPTED" || aiResult.status === "VERIFIED" ? "verified" : "needs_review",
         userId ?? null,
       ]);
 

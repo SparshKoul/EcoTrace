@@ -231,8 +231,8 @@ export async function submitReport(submission: ReportSubmission): Promise<Report
       longitude: submission.location.lng,
     }),
   });
-  const data = await response.json().catch(() => ({})) as { report?: { id?: string }; error?: string };
-  if (!response.ok) throw new Error(data.error ?? 'The report could not be submitted.');
+  const data = await response.json().catch(() => ({})) as { report?: { id?: string }; error?: string; message?: string };
+  if (!response.ok) throw new Error(data.message ?? data.error ?? 'The report could not be submitted.');
   return { report_id: String(data.report?.id ?? `local-${Date.now()}`), status: 'PROCESSING' };
 }
 

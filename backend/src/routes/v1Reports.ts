@@ -12,6 +12,7 @@ import { query } from "../db/pool.js";
 import { getRequestUser } from "../services/auth/requestUser.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { draftLetter } from "../services/letters/LetterDrafter.js";
+import { aiVerifyClient } from "../services/ai/verifyClient.js";
 
 const PRIVATE_DIR = path.resolve(process.cwd(), "storage", "private");
 const PUBLIC_DIR = path.resolve(process.cwd(), "storage", "public");
@@ -90,17 +91,21 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
 
     let analysis: AnalysisResponse;
     try {
-      const form = new FormData();
-      form.append("report_id", reportId);
-      form.append("media_type", mediaType);
-      form.append("file", new Blob([buffer], { type: part.mimetype || (mediaType === "video" ? "video/webm" : "image/jpeg") }), `${reportId}.${extension}`);
-      const response = await fetch(`${env.AI_SERVICE_URL.replace(/\/$/, "")}/internal/process-media`, {
-        method: "POST",
-        body: form,
-        signal: AbortSignal.timeout(300_000),
+      const verified = await aiVerifyClient.verifyBuffer(buffer, part.mimetype || (mediaType === "video" ? "video/webm" : "image/jpeg"), {
+        reportId,
+        reportType: "mixed_municipal",
+        latitude: lat,
+        longitude: lng,
       });
-      if (!response.ok) throw new Error(`AI service returned ${response.status}`);
-      analysis = await response.json() as AnalysisResponse;
+      analysis = {
+        is_valid_trash: verified.is_waste,
+        rejection_reason: verified.rejection_reason,
+        trash_category: verified.category,
+        severity_score: 3,
+        public_audit_summary: verified.audit_summary,
+        sanitized_url: null,
+        model_used: "azure-gpt5-mini + siglip2",
+      };
     } catch (cause) {
       await fs.unlink(rawPath).catch(() => undefined);
       request.log.error(cause, "AI media processing failed");
