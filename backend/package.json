@@ -19,6 +19,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/multipart": "^9.4.0",
+    "@fastify/rate-limit": "^11.3.0",
     "@fastify/static": "^10.1.12",
     "@supabase/supabase-js": "^2.119.2",
     "dotenv": "^16.4.7",

@@ -4,14 +4,17 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FastifyPluginAsync } from "fastify";
 import { env } from "../config/env.js";
 import { query } from "../db/pool.js";
+import { isSupabaseConfigured } from "../db/supabase.js";
 import { getRequestUser } from "../services/auth/requestUser.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { draftLetter } from "../services/letters/LetterDrafter.js";
+import { uploadRaw, uploadSanitized } from "../services/storage/mediaStorage.js";
 
 const PRIVATE_DIR = path.resolve(process.cwd(), "storage", "private");
 const PUBLIC_DIR = path.resolve(process.cwd(), "storage", "public");
@@ -115,10 +118,26 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    const category = analysis.trash_category ?? "mixed_municipal";
-    const severity = analysis.severity_score ?? 3;
+    const category = analysis.trash_category ?? "mixed_municipal";    const severity = analysis.severity_score ?? 3;
     const sanitizedUrl = analysis.sanitized_url ?? null;
     const thumbnailUrl = analysis.thumbnail_url ?? sanitizedUrl;
+
+    // Mirror media into Supabase Storage. Raw bytes only ever go to the private
+    // bucket; the public bucket receives the AI-sanitized output exclusively.
+    try {
+      if (isSupabaseConfigured()) {
+        await uploadRaw(buffer, reportId, mediaType, part.mimetype);
+        const cleanName = sanitizedUrl ? path.basename(String(sanitizedUrl)) : "";
+        const cleanPath = cleanName ? path.join(PUBLIC_DIR, cleanName) : "";
+        if (cleanPath && existsSync(cleanPath)) {
+          const cleanBytes = await fs.readFile(cleanPath);
+          await uploadSanitized(cleanBytes, reportId, mediaType, mediaType === "video" ? "video/mp4" : "image/jpeg");
+        }
+      }
+    } catch (storageCause) {
+      request.log.warn(storageCause, "Supabase Storage mirror skipped; local files remain authoritative");
+    }
+
     const boundary = resolveBoundary({ latitude: lat, longitude: lng });
 
     let siteId: string;
@@ -203,16 +222,23 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
       mp_constituency: boundary.mp.constituencyName,
     });
 
+    // Field names mirror the FeedReport contract so the frontend can use the
+    // 201 response for instant map/activity reflection without re-fetching.
     return reply.status(201).send({
+      id: reportId,
       report_id: reportId,
       site_id: siteId,
       status: "VERIFIED",
+      site_status: "open",
+      report_count: 1,
       grouped,
       media_type: mediaType,
       trash_category: category,
+      severity: severity,
       severity_score: severity,
       detected_items: analysis.detected_items ?? [],
       public_audit_summary: analysis.public_audit_summary ?? "",
+      sanitized_media_url: sanitizedUrl,
       sanitized_url: sanitizedUrl,
       thumbnail_url: thumbnailUrl,
       pii_blur_count: analysis.pii_blur_count ?? 0,
@@ -221,6 +247,9 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
       lat,
       lng,
       request_ip_masked: ipMasked,
+      ulb_name: boundary.ward.name,
+      mla_constituency: boundary.mla.constituencyName,
+      mp_constituency: boundary.mp.constituencyName,
       model_used: analysis.model_used,
       notes,
       letter,

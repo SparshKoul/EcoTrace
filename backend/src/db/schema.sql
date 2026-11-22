@@ -229,6 +229,76 @@ DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
 CREATE POLICY "Users can update own profile" ON public.users
   FOR UPDATE USING (auth.uid() = id);
 
+-- ---------------------------------------------------------------------------
+-- Row Level Security for every civic table.
+-- The backend service role bypasses RLS; these policies are defence-in-depth so
+-- a leaked anon key cannot read or tamper with citizen data. Write paths go
+-- through the backend, so anon/authenticated get read-only access at most.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    -- Public transparency data: anyone (even without an account) may read sites,
+    -- reports and area scorecards; everything else is backend-mediated.
+    ALTER TABLE sites ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE area_scores ENABLE ROW LEVEL SECURITY;
+
+    DROP POLICY IF EXISTS "Public read access" ON sites;
+    CREATE POLICY "Public read access" ON sites FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Public read access" ON reports;
+    CREATE POLICY "Public read access" ON reports FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Public read access" ON area_scores;
+    CREATE POLICY "Public read access" ON area_scores FOR SELECT USING (true);
+
+    -- Citizen-authored tables: a signed-in user sees their own rows only.
+    -- (cleanup_claims uses uploader_id; scan_frames is scoped via its session.)
+    FOREACH tbl IN ARRAY ARRAY['notes', 'site_votes', 'scan_sessions']
+    LOOP
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
+      EXECUTE format('DROP POLICY IF EXISTS "Owner read access" ON %I', tbl);
+      EXECUTE format(
+        'CREATE POLICY "Owner read access" ON %I FOR SELECT USING (user_id = auth.uid()::text)', tbl
+      );
+    END LOOP;
+
+    ALTER TABLE cleanup_claims ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Owner read access" ON cleanup_claims;
+    CREATE POLICY "Owner read access" ON cleanup_claims
+      FOR SELECT USING (uploader_id = auth.uid()::text);
+
+    ALTER TABLE scan_frames ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Owner read access" ON scan_frames;
+    CREATE POLICY "Owner read access" ON scan_frames
+      FOR SELECT USING (
+        EXISTS (
+          SELECT 1 FROM scan_sessions s
+          WHERE s.id = scan_frames.session_id AND s.user_id = auth.uid()::text
+        )
+      );
+
+    -- letters has no user_id column: it is civic-published, so read for all authenticated.
+    ALTER TABLE letters ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Owner read access" ON letters;
+    DROP POLICY IF EXISTS "Authenticated read access" ON letters;
+    CREATE POLICY "Authenticated read access" ON letters
+      FOR SELECT TO authenticated USING (true);
+
+    -- site_backers / photo_flags use different owner column names.
+    ALTER TABLE site_backers ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Owner read access" ON site_backers;
+    CREATE POLICY "Owner read access" ON site_backers
+      FOR SELECT USING (user_id = auth.uid()::text);
+
+    ALTER TABLE photo_flags ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "Owner read access" ON photo_flags;
+    CREATE POLICY "Owner read access" ON photo_flags
+      FOR SELECT USING (reporter_id = auth.uid()::text);
+  END IF;
+END $$;
+
 -- 12. AI transparency pipeline (image -> blur -> classify -> public report)
 CREATE EXTENSION IF NOT EXISTS postgis;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS location GEOGRAPHY(POINT, 4326);
@@ -259,6 +329,28 @@ UPDATE sites SET ulb_name = ward_name WHERE ulb_name IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sites_location ON sites USING GIST (location);
 CREATE INDEX IF NOT EXISTS idx_reports_ip_hash ON reports (ip_hash);
+
+-- ---------------------------------------------------------------------------
+-- 13. Supabase Storage buckets for evidence media.
+-- Raw captures live in a private bucket; only AI-sanitized media is public.
+-- ---------------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('ecotrace-raw-private', 'ecotrace-raw-private', FALSE, 15728640, ARRAY['image/jpeg','image/png','image/webp','video/webm','video/mp4']),
+  ('ecotrace-sanitized-public', 'ecotrace-sanitized-public', TRUE, 15728640, ARRAY['image/jpeg','image/png','image/webp','video/webm','video/mp4'])
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- The sanitized bucket is read-only for clients; uploads happen via the service role.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    EXECUTE 'GRANT SELECT ON storage.objects TO anon, authenticated';
+    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON storage.objects FROM anon, authenticated';
+  END IF;
+END $$;
 
 -- Keep the geography point in sync with latitude/longitude.
 CREATE OR REPLACE FUNCTION set_site_location()

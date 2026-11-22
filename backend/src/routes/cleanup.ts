@@ -7,10 +7,10 @@ import {
   startCleanup,
   validateCleanup,
 } from "../services/sites/CleanupService.js";
+import { authErrorStatusCode, requireUser } from "../services/auth/requestUser.js";
 
 const startSchema = z.object({
   afterPhotoUrl: z.string().min(1, "afterPhotoUrl is required"),
-  userId: z.string().min(1, "userId is required"),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
   accuracyM: z.number().nonnegative().optional(),
@@ -24,31 +24,38 @@ const validateSchema = z.object({
 
 export const cleanupRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/sites/:id/cleanup — citizen or authority claims the site is cleared.
+  // The claim uploader is always the authenticated session user.
   app.post("/sites/:id/cleanup", async (request, reply) => {
     const { id } = request.params as { id: string };
     const parsed = startSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Validation failed", details: parsed.error.format() });
     }
-
-    const result = await startCleanup({
-      siteId: id,
-      afterPhotoUrl: parsed.data.afterPhotoUrl,
-      uploaderId: parsed.data.userId,
-      latitude: parsed.data.latitude,
-      longitude: parsed.data.longitude,
-      accuracyM: parsed.data.accuracyM,
-    });
-    if (!result.ok) {
-      return reply.status(result.statusCode).send({ error: result.reason });
+    try {
+      const user = await requireUser(request);
+      const result = await startCleanup({
+        siteId: id,
+        afterPhotoUrl: parsed.data.afterPhotoUrl,
+        uploaderId: user.id,
+        latitude: parsed.data.latitude,
+        longitude: parsed.data.longitude,
+        accuracyM: parsed.data.accuracyM,
+      });
+      if (!result.ok) {
+        return reply.status(result.statusCode).send({ error: result.reason });
+      }
+      return reply.status(202).send({
+        cleanup_id: result.claim.id,
+        site_id: result.site.id,
+        status: result.claim.status,
+        site_status: result.site.status,
+        distance_m: result.claim.distance_m,
+      });
+    } catch (cause) {
+      return reply.status(authErrorStatusCode(cause)).send({
+        error: cause instanceof Error ? cause.message : "Authentication required",
+      });
     }
-    return reply.status(202).send({
-      cleanup_id: result.claim.id,
-      site_id: result.site.id,
-      status: result.claim.status,
-      site_status: result.site.status,
-      distance_m: result.claim.distance_m,
-    });
   });
 
   // GET /api/sites/:id/cleanup — claim history for a site.

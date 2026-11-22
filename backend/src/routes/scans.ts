@@ -3,8 +3,9 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { addFrames, beginScan, finishScan, getScanState } from "../services/scans/ScanService.js";
+import { authErrorStatusCode, requireUser } from "../services/auth/requestUser.js";
 
-const startSchema = z.object({ userId: z.string().optional() });
+const startSchema = z.object({});
 
 const frameSchema = z.object({
   t_ms: z.number().int().nonnegative(),
@@ -17,12 +18,19 @@ const frameSchema = z.object({
 const framesSchema = z.object({ frames: z.array(frameSchema).min(1) });
 
 export const scanRoutes: FastifyPluginAsync = async (app) => {
-  // POST /api/scans/start
+  // POST /api/scans/start — the session owner is always the authenticated user.
   app.post("/scans/start", async (request, reply) => {
     const parsed = startSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.status(400).send({ error: "Validation failed" });
-    const result = await beginScan(parsed.data.userId);
-    return reply.status(201).send(result);
+    try {
+      const user = await requireUser(request);
+      const result = await beginScan(user.id);
+      return reply.status(201).send(result);
+    } catch (cause) {
+      return reply.status(authErrorStatusCode(cause)).send({
+        error: cause instanceof Error ? cause.message : "Authentication required",
+      });
+    }
   });
 
   // POST /api/scans/:id/frames

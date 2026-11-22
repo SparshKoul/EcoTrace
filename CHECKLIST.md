@@ -1,7 +1,7 @@
 # EcoTrace — Status & Checklist
 
 **Last updated:** 22 Nov 2026
-**Authoritative branch:** `backend` (also contains the frontend) — pushed to `origin/backend` at `3d04f23`.
+**Authoritative branch:** `testing` (hardening + pipeline integration work)
 `frontend/`, `backend/`, `microservice/` and `testing/` all exist in the monorepo; `ecotrace_refrence/` is gitignored.
 
 ---
@@ -68,34 +68,47 @@
 
 ---
 
+## ✅ Hardening pass (testing branch, 22 Nov 2026)
+
+### Security
+- [x] **JWT enforced on every write route** — votes, backers, notes, cleanup claims, photo flags, scans, `/reports`, `/users/me/*`; the spoofable `x-user-id` header and body `userId` fallbacks were removed entirely
+- [x] `requireUser()` helper + `authErrorStatusCode()` mapping in `services/auth/requestUser.ts`
+- [x] **Rate limiting** via `@fastify/rate-limit`: global 300 req/min, `/api/auth/*` capped at 10 req/min in an encapsulated plugin
+- [x] **RLS enabled on all 11 civic tables** (defence-in-depth; backend uses the service role): public read on sites/reports/area_scores, owner-only read on notes, votes, scans, cleanup claims (uploader_id), scan_frames (via session join), site_backers, photo_flags (reporter_id); letters readable by authenticated users
+
+### Storage
+- [x] **Both Supabase Storage buckets created by migration**: `ecotrace-raw-private` (private) + `ecotrace-sanitized-public` (public), 15 MB limit, MIME allowlist; client write access revoked
+- [x] `services/storage/mediaStorage.ts` with `uploadRaw()` / `uploadSanitized()`
+- [x] `/api/v1/reports` mirrors raw → private bucket, sanitized → public bucket (best-effort; local disk remains authoritative offline). Raw bytes never touch the public bucket
+
+### Microservice
+- [x] **`POST /internal/cleanup/validate`** — before/after cleanup validation (same-photo reject, distance gate, Gemini waste-gone analysis); sync handler so the Gemini SDK never blocks the event loop
+- [x] **`POST /internal/summarize-notes`** — AI note briefing with extractive fallback (verified live: `"source":"ai"`)
+- [x] Both endpoints live-tested; `/health` stays responsive during Gemini calls
+
+### Frontend ↔ live backend (master pipeline wiring)
+- [x] **`context/ReportContext.tsx`** — shared store: on 201 from `POST /api/v1/reports`, the new report is applied to the map pins AND prepended to the activity feed instantly (no refetch); `focusReportId` drives fly-to + popup
+- [x] **`components/ReportForm.tsx`** — capture + submit with the real-time "AI is scanning for privacy & classifying trash…" button state, fresh GPS (`enableHighAccuracy`, `maximumAge: 0`) + ISO timestamp locked at capture
+- [x] **`components/LiveMap.tsx`** — Leaflet map fed by ReportContext; popup shows blurred evidence, 🔒 blur count, trash type, detected items, GPS, captured_at, masked origin IP
+- [x] **`components/ActivitySection.tsx`** — user reports with sanitized thumbnail, severity, captured_at/GPS/IP, `VERIFIED • LIVE ON MAP` badge and "View on Map"
+- [x] Backend 201 response now mirrors the `FeedReport` contract (`id`, `sanitized_media_url`, `severity`, `site_status`, boundary fields) so the optimistic path renders complete pins
+- [x] MapPage/ActivityPage rewired to LiveMap/ActivitySection; typecheck, lint, 20 tests, production build all green
+
+---
+
 ## ⬜ To do / remaining
 
 ### Backend roadmap gaps
-- [ ] **1.3** Presigned upload URLs (`POST /uploads/sign`) for private media
-- [ ] **1.6** Backend photo moderation/blur pipeline — or confirm the microservice fully owns it
 - [ ] **2.4** Dustbin proximity engine (nearest bin within 3 km)
 - [ ] **2.5** No-bin zone detection (5+ unique reporters)
-- [ ] Replace the remaining `x-user-id` / body `userId` fallbacks with enforced JWT auth on all write routes
-- [ ] Add `@fastify/rate-limit` (especially for `/auth/*`), refresh tokens, password reset, email verification
+- [ ] `@fastify/rate-limit` for `/auth/*` — ✅ done 22 Nov; refresh tokens, password reset, email verification remain
 - [ ] Role model (`citizen`, `authority`, `admin`) enforcement beyond the stored column
-- [ ] RLS policies for the other 11 tables (currently only `users` has them; backend bypasses RLS today)
-
-### Storage
-- [ ] Create the two Supabase Storage buckets: `ecotrace-raw-private` and `ecotrace-sanitized-public`
-- [ ] Wire `uploadRaw()` / `uploadSanitized()` into the report ingestion and AI pipelines
-- [ ] Enforce that raw media never reaches the public bucket
-
-### Microservice remaining
-- [ ] Keyframe extraction (Laplacian variance) from walking videos
-- [ ] `/internal/cleanup/validate` and `/internal/summarize-notes` endpoints so the backend stops using its offline fallbacks
-- [ ] Replace mock-AI mode with a real `GEMINI_API_KEY` and confirm the chosen model names are available in your region
-- [ ] Optional local YOLOv8 path for offline/edge inference
+- [ ] Presigned upload URLs (`POST /uploads/sign`) as an alternative to direct multipart
 
 ### Frontend ↔ live backend
 - [ ] Set `VITE_USE_MOCK_API=false` and point `VITE_API_BASE_URL` at a reachable backend
 - [ ] Put the backend behind HTTPS (Cloudflare/ngrok tunnel) so the phone's HTTPS page can call it (no mixed content)
 - [ ] End-to-end test: real sign-up → capture → report → map → letter → sign-out on a phone
-- [ ] Component-level UI tests (Testing Library is installed; only pure-domain tests exist today)
 
 ### Data & QA
 - [ ] Add sample media fixtures to `testing/` (waste dumps, faces/plates, non-waste selfies)
@@ -106,7 +119,7 @@
 ### Delivery
 - [ ] CI pipeline (typecheck, tests, build for both modules)
 - [ ] Deployment (frontend static host, backend container, microservice container)
-- [ ] Merge `backend` → `staging` → `main` via reviewed PRs when the team is ready
+- [ ] Merge `testing` → `staging` → `main` via reviewed PRs when the team is ready
 
 ---
 

@@ -3,31 +3,31 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { backSite, getBackerState } from "../services/sites/BackerService.js";
-
-const backerSchema = z.object({
-  userId: z.string().min(1, "userId is required"),
-});
+import { authErrorStatusCode, requireUser } from "../services/auth/requestUser.js";
 
 export const backerRoutes: FastifyPluginAsync = async (app) => {
-  // POST /api/sites/:id/backers
+  // POST /api/sites/:id/backers — the backer is always the authenticated session user.
   app.post("/sites/:id/backers", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const parsed = backerSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: "Validation failed", details: parsed.error.format() });
+    try {
+      const user = await requireUser(request);
+      const result = await backSite(id, user.id);
+      if (!result) return reply.status(404).send({ error: "Site not found" });
+      return reply.send({
+        count: result.count,
+        needed: result.needed,
+        verified: result.verified,
+        escalated: result.escalated,
+        severity: result.site.severity,
+        site_status: result.site.status,
+        newly_added: result.newlyAdded,
+        just_verified: result.justVerified,
+      });
+    } catch (cause) {
+      return reply.status(authErrorStatusCode(cause)).send({
+        error: cause instanceof Error ? cause.message : "Authentication required",
+      });
     }
-    const result = await backSite(id, parsed.data.userId);
-    if (!result) return reply.status(404).send({ error: "Site not found" });
-    return reply.send({
-      count: result.count,
-      needed: result.needed,
-      verified: result.verified,
-      escalated: result.escalated,
-      severity: result.site.severity,
-      site_status: result.site.status,
-      newly_added: result.newlyAdded,
-      just_verified: result.justVerified,
-    });
   });
 
   // GET /api/sites/:id/backers

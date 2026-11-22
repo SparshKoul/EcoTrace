@@ -20,3 +20,25 @@ export async function getRequestUser(request: FastifyRequest): Promise<AuthUser 
     return null;
   }
 }
+
+/**
+ * Enforces a valid Supabase session on a write route and returns the authenticated user.
+ * Spoofable `userId` body fields / `x-user-id` headers are no longer accepted anywhere.
+ */
+export async function requireUser(request: FastifyRequest): Promise<AuthUser> {
+  const user = await getRequestUser(request);
+  if (!user) {
+    const error = new Error("Authentication required. Sign in to continue.") as Error & {
+      statusCode?: number;
+    };
+    error.statusCode = 401;
+    throw error;
+  }
+  return user;
+}
+
+/** Fastify error handler helper: maps thrown auth errors onto the HTTP response. */
+export function authErrorStatusCode(error: unknown): number {
+  const statusCode = (error as { statusCode?: number }).statusCode;
+  return typeof statusCode === "number" ? statusCode : 500;
+}

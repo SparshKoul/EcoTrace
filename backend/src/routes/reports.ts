@@ -5,14 +5,12 @@ import { aiVerifyClient } from "../services/ai/verifyClient.js";
 import { findNearbySite, type Site } from "../services/sites/siteMerger.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { phase4Memory } from "../services/phase4Store.js";
-import { getRequestUser } from "../services/auth/requestUser.js";
-
+import { authErrorStatusCode, requireUser } from "../services/auth/requestUser.js";;
 const createReportSchema = z.object({
   photoUrl: z.string().url("Valid photo URL is required"),
   wasteType: z.string().min(1, "wasteType must be specified"),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  userId: z.string().optional(),
 });
 
 export const reportRoutes: FastifyPluginAsync = async (app) => {
@@ -27,9 +25,16 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const { photoUrl, wasteType, latitude, longitude } = parseResult.data;
-    // A valid Supabase token always wins over the optional demo userId field.
-    const authUser = await getRequestUser(request);
-    const userId = authUser?.id ?? parseResult.data.userId;
+    // The report owner is always the authenticated session user.
+    let userId: string;
+    try {
+      const authUser = await requireUser(request);
+      userId = authUser.id;
+    } catch (cause) {
+      return reply.status(authErrorStatusCode(cause)).send({
+        error: cause instanceof Error ? cause.message : "Authentication required",
+      });
+    }
 
     // 1. Resolve administrative boundaries (Ward, MLA, MP)
     const boundary = resolveBoundary({ latitude, longitude });

@@ -4,6 +4,7 @@ import fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import rateLimit from "@fastify/rate-limit";
 import { checkDbHealth } from "./db/pool.js";
 import { reportRoutes } from "./routes/reports.js";
 import { siteRoutes } from "./routes/sites.js";
@@ -46,6 +47,30 @@ export function buildServer(): FastifyInstance {
     origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
+
+  // Global rate limit; auth endpoints get a stricter budget of their own.
+  app.register(rateLimit, {
+    global: true,
+    max: 300,
+    timeWindow: "1 minute",
+    // Only count real client requests; skip the health probe used by uptime checks.
+    allowList: (request) => request.url === "/health",
+  });
+
+  app.register(
+    async function authRateLimit(scope) {
+      await scope.register(rateLimit, {
+        global: true,
+        max: 10,
+        timeWindow: "1 minute",
+        errorResponseBuilder: (_request, context) => ({
+          error: `Too many attempts. Try again in ${context.after}.`,
+        }),
+      });
+      scope.register(authRoutes, { prefix: "/auth" });
+    },
+    { prefix: "/api" },
+  );
 
   // Health check endpoint (including DB connectivity probe)
   app.get("/health", async () => {
@@ -90,8 +115,7 @@ export function buildServer(): FastifyInstance {
   app.register(scanRoutes, { prefix: "/api" });
   app.register(shareRoutes, { prefix: "/api" });
 
-  // Supabase Authentication
-  app.register(authRoutes, { prefix: "/api" });
+  // Supabase Authentication is registered inside the rate-limited encapsulated context above.
 
   return app;
 }

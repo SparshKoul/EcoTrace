@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { CaptureModal } from '../components/capture/CaptureModal';
 import { ComplaintModal } from '../components/complaint/ComplaintModal';
+import { LiveMap } from '../components/LiveMap';
 import { Button } from '../components/ui/Button';
 import { Chip } from '../components/ui/Chip';
 import { GpsBadge } from '../components/ui/GpsBadge';
 import { PILOT_CENTRE } from '../config/rules';
+import { useReports } from '../context/ReportContext';
 import type { Tab } from '../navigation';
 import { useApp } from '../state/AppContext';
 import type { GeoPoint } from '../types';
-import { TransparencyMap } from './TransparencyMap';
 
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { feed, lastReport, focusReport, locate, notify } = useApp();
+  const { locate, notify } = useApp();
+  const { reports } = useReports();
   const [captureOpen, setCaptureOpen] = useState(false);
   const [complaintSite, setComplaintSite] = useState<string | null>(null);
   const [userPoint, setUserPoint] = useState<GeoPoint | null>(null);
@@ -28,17 +30,15 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
   return (
     <section className="relative h-full" aria-label="Live civic waste map">
-      <TransparencyMap
-        reports={feed}
-        focus={focusReport ?? lastReport}
+      <LiveMap
         userPoint={userPoint}
-        onOpenComplaint={setComplaintSite}
+        onViewComplaint={setComplaintSite}
       />
 
       <div className="pointer-events-none absolute inset-x-0 top-0 space-y-2 p-4">
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <GpsBadge />
-          <Chip tone="accent">{feed.length} verified reports</Chip>
+          <Chip tone="accent">{reports.length} verified reports</Chip>
           <button
             type="button"
             onClick={() => void useMyLocation()}
@@ -61,8 +61,8 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       {captureOpen && (
         <CaptureModal
           onClose={() => setCaptureOpen(false)}
-          onCreated={(report) => {
-            notify(report.grouped ? 'Merged into a nearby site.' : 'New site published.');
+          onCreated={() => {
+            notify('New report published — live on the map.');
             onNavigate('map');
           }}
         />

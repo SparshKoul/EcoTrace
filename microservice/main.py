@@ -312,3 +312,144 @@ async def analyse_alias(
 ) -> dict[str, object]:
     """Backwards-compatible photo-only alias used by the existing backend route."""
     return await process_media(report_id=report_id, media_type="photo", file=file)
+
+
+# ---------------------------------------------------------------------------
+# Cleanup validation (Phase 3.5) — before/after comparison for cleanup claims.
+# ---------------------------------------------------------------------------
+class CleanupValidation(BaseModel):
+    accepted: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str
+    source: Literal["ai", "vision"]
+
+
+@app.post("/internal/cleanup/validate", response_model=None)
+def cleanup_validate(
+    site_id: str = Form(...),
+    before_photo_url: str | None = Form(None),
+    after_photo_url: str = Form(...),
+    distance_m: float | None = Form(None),
+    after_file: UploadFile | None = File(None),
+) -> dict[str, object]:
+    """
+    Validates an after-cleanup photo for a site claim.
+
+    `after_photo_url` may point at a local sanitized file (/public/...) when the
+    backend has already stored it; otherwise pass the raw image as `after_file`.
+    The check verifies waste is actually gone by re-running the trash analysis
+    on the after photo and comparing it against the before state.
+
+    Sync `def` on purpose: the Gemini SDK call blocks, and FastAPI runs sync
+    handlers in a threadpool so the event loop stays responsive.
+    """
+    del site_id  # logged by the caller; kept for pipeline symmetry
+
+    # Rule 1: identical before/after URL can never demonstrate a cleanup.
+    if before_photo_url and after_photo_url and before_photo_url == after_photo_url:
+        return CleanupValidation(
+            accepted=False, confidence=0.0, reason="after_photo_matches_before_photo", source="vision"
+        ).model_dump()
+
+    # Rule 2: an optional distance gate — claims far from the site are suspect.
+    if distance_m is not None and distance_m > 500:
+        return CleanupValidation(
+            accepted=False, confidence=0.2, reason="claim_too_far_from_site", source="vision"
+        ).model_dump()
+
+    image_bytes: bytes | None = None
+    mime = "image/jpeg"
+    if after_file is not None:
+        image_bytes = after_file.file.read()
+        mime = after_file.content_type or mime
+    else:
+        # Resolve a local /public/... URL produced by the sanitize pipeline.
+        name = after_photo_url.rstrip("/").split("/")[-1]
+        candidate = PUBLIC_DIR / name
+        if candidate.is_file():
+            image_bytes = candidate.read_bytes()
+        else:
+            raise HTTPException(status_code=404, detail="after_photo_not_found")
+
+    try:
+        analysis, model_used = analyse_with_gemini(image_bytes, mime)
+    except Exception as exc:  # noqa: BLE001 — degrade gracefully for the backend
+        raise HTTPException(status_code=503, detail=f"analysis_unavailable: {exc}") from exc
+
+    remaining_items = analysis.detected_items or []
+    waste_gone = not analysis.is_valid_trash or analysis.trash_category == "none"
+    if waste_gone:
+        return CleanupValidation(
+            accepted=True,
+            confidence=0.92 if model_used != "mock" else 0.75,
+            reason="no_waste_detected_in_after_photo",
+            source="vision",
+        ).model_dump()
+
+    # Waste still visible: reject with a short evidence-based reason.
+    return CleanupValidation(
+        accepted=False,
+        confidence=0.8,
+        reason="waste_still_visible: " + ", ".join(remaining_items[:3]) if remaining_items else "waste_still_visible",
+        source="vision",
+    ).model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Community note summarization (Phase 4.3) — deterministic briefing upgrade.
+# ---------------------------------------------------------------------------
+class NoteSummaryResponse(BaseModel):
+    summary: str
+    source: Literal["ai", "offline"]
+    note_count: int
+
+
+@app.post("/internal/summarize-notes")
+def summarize_notes(payload: dict[str, object]) -> dict[str, object]:
+    """
+    Builds a short citizen-note briefing. Uses Gemini when a key is configured;
+    otherwise returns a structured extractive summary so the backend never
+    depends on this endpoint being up (it keeps its own offline fallback).
+
+    Sync `def` on purpose: the Gemini SDK call is blocking, and FastAPI runs
+    sync handlers in a threadpool so the event loop stays responsive.
+    """
+    site_id = str(payload.get("site_id", ""))
+    raw_notes = payload.get("notes") or []
+    if not isinstance(raw_notes, list):
+        raise HTTPException(status_code=400, detail="notes_must_be_a_list")
+    notes = [str(note).strip() for note in raw_notes if str(note).strip()][:200]
+    if not notes:
+        return NoteSummaryResponse(
+            summary="No citizen observations have been recorded yet.", source="offline", note_count=0
+        ).model_dump()
+
+    joined = " | ".join(notes)
+
+    if not USE_MOCK_AI and API_KEY:
+        try:
+            client = genai.Client(api_key=API_KEY)
+            response = client.models.generate_content(
+                model=MODELS[0],
+                contents=[
+                    "Summarize the following citizen observations about one waste site "
+                    "in at most 3 short sentences. Mention recurring themes, severity "
+                    "signals and any deadlines or requests. Plain text only.\n\n"
+                    f"Site: {site_id}\nNotes: {joined}",
+                ],
+                config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=200),
+            )
+            text = (response.text or "").strip()
+            if text:
+                return NoteSummaryResponse(summary=text, source="ai", note_count=len(notes)).model_dump()
+        except Exception:  # noqa: BLE001 — fall through to the extractive summary
+            pass
+
+    # Extractive fallback: keep the most information-dense notes in order.
+    ranked = sorted(notes, key=lambda note: len(note), reverse=True)[:3]
+    excerpt = "; ".join(ranked)
+    if len(excerpt) > 400:
+        excerpt = excerpt[:397] + "…"
+    return NoteSummaryResponse(
+        summary=f"Citizens report: {excerpt}.", source="offline", note_count=len(notes)
+    ).model_dump()

@@ -116,6 +116,7 @@ export interface V1Site {
 
 export interface FeedReport {
   readonly id: string;
+  readonly report_id?: string;
   readonly site_id: string;
   readonly media_type: 'photo' | 'video';
   readonly sanitized_media_url: string | null;

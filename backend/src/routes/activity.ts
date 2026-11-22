@@ -1,22 +1,16 @@
 /** Phase 4.4 — "My Activity": reports, votes, notes and cleanup claims by user. */
 
-import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync } from "fastify";
 import { tallyFlags } from "../domain/flags/PhotoFlags.js";
 import { getActivity, listFlags, listReportsByUser } from "../services/phase4Repository.js";
-
-function resolveUserId(request: FastifyRequest): string | null {
-  const header = request.headers["x-user-id"];
-  const fromHeader = Array.isArray(header) ? header[0] : header;
-  const fromQuery = (request.query as { userId?: string }).userId;
-  return fromHeader || fromQuery || null;
-}
+import { authErrorStatusCode, requireUser } from "../services/auth/requestUser.js";
 
 export const activityRoutes: FastifyPluginAsync = async (app) => {
-  const register = (path: string) => {
-    app.get(`${path}/reports`, async (request, reply) => {
-      const userId = resolveUserId(request);
-      if (!userId) return reply.status(400).send({ error: "USER_ID_REQUIRED" });
-      const reports = await listReportsByUser(userId);
+  // /api/users/me/* — identity always comes from the Supabase session token.
+  app.get("/users/me/reports", async (request, reply) => {
+    try {
+      const user = await requireUser(request);
+      const reports = await listReportsByUser(user.id);
       const masked = await Promise.all(reports.map(async (report) => {
         const pendingModeration = tallyFlags(await listFlags(report.id)).hidden;
         return {
@@ -26,16 +20,22 @@ export const activityRoutes: FastifyPluginAsync = async (app) => {
         };
       }));
       return reply.send({ count: masked.length, reports: masked });
-    });
+    } catch (cause) {
+      return reply.status(authErrorStatusCode(cause)).send({
+        error: cause instanceof Error ? cause.message : "Authentication required",
+      });
+    }
+  });
 
-    app.get(`${path}/activity`, async (request, reply) => {
-      const userId = resolveUserId(request);
-      if (!userId) return reply.status(400).send({ error: "USER_ID_REQUIRED" });
-      const activity = await getActivity(userId);
+  app.get("/users/me/activity", async (request, reply) => {
+    try {
+      const user = await requireUser(request);
+      const activity = await getActivity(user.id);
       return reply.send({ count: activity.length, activity });
-    });
-  };
-
-  register("/users/me");
-  register("/users/:userId");
+    } catch (cause) {
+      return reply.status(authErrorStatusCode(cause)).send({
+        error: cause instanceof Error ? cause.message : "Authentication required",
+      });
+    }
+  });
 };
