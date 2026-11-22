@@ -5,10 +5,10 @@ services:
   - type: web
     name: ecotrace-ai-ml
     runtime: docker
-    plan: starter             # 2 GB RAM — Free (512 MB) cannot load torch+SigLIP
+    plan: standard            # 2 GB RAM — needed for torch + SigLIP 2 + YOLO at startup
     region: oregon            # change to singapore if your team is in Asia
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    dockerfilePath: ./microservice/Dockerfile
+    dockerContext: ./microservice
     healthCheckPath: /health
     envVars:
       - key: PORT
