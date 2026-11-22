@@ -18,8 +18,8 @@ const readString = (key: string, fallback: string): string => {
 export const RULES = {
   /** FR-1.2: no submission without a GPS fix this accurate. */
   GPS_MAX_ACCURACY_M: 30,
-  /** A fix older than this is stale; ask the device for a fresh one. */
-  GPS_MAX_AGE_MS: 10_000,
+  /** A fix older than this is stale; 2 minutes window allows natural user framing without false "stale" blocks. */
+  GPS_MAX_AGE_MS: 120_000,
   /** FR-2.2: PostGIS ST_DWithin merge radius, in metres. */
   SITE_MERGE_RADIUS_M: 20,
   /** FR-2.5: scores and scorecards stay hidden until this many distinct reporters. */

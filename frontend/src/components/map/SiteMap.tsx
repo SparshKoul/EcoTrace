@@ -110,11 +110,22 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focu
                     </Chip>
                   </div>
                   {!isCluster && representative.evidenceUrl && (
-                    <img
-                      src={representative.evidenceUrl}
-                      alt="Sanitized evidence from a verified report"
-                      className="h-28 w-full rounded-xl object-cover"
-                    />
+                    <div className="relative overflow-hidden rounded-xl bg-tile border border-line">
+                      <img
+                        src={representative.evidenceUrl}
+                        alt="Sanitized evidence from a verified report"
+                        className="h-32 w-full rounded-xl object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                      />
+                      <div className="hidden h-24 w-full flex-col items-center justify-center p-2 text-center text-xs font-semibold text-muted bg-tile">
+                        <span>📸 Verified Evidence On-File</span>
+                      </div>
+                    </div>
                   )}
                   <p className="text-xs text-muted">
                     {representative.reportCount} reports · {representative.reporterCount} distinct reporters ·

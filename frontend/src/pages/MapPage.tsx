@@ -30,7 +30,7 @@ const markPromptSeen = () => {
 };
 
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { sites, areas, feed, loading, fix, locate, locateByIp, notify, backExistingSite } = useApp();
+  const { sites, areas, feed, loading, fix, locate, locateByIp, notify, backExistingSite, focusReport } = useApp();
   const [complaintSiteId, setComplaintSiteId] = useState<string | null>(null);
   const [localitySite, setLocalitySite] = useState<Site | null>(null);
   const [focusPoint, setFocusPoint] = useState<GeoPoint | null>(null);
@@ -41,6 +41,13 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [approxLabel, setApproxLabel] = useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const autoCenteredRef = useRef(false);
+
+  // If citizen navigated from Activity tab ("View on Map"), fly straight to their report
+  useEffect(() => {
+    if (focusReport) {
+      setFocusPoint({ lat: focusReport.lat, lng: focusReport.lng });
+    }
+  }, [focusReport]);
 
   // Check if browser already granted or denied permission to avoid prompting again
   useEffect(() => {

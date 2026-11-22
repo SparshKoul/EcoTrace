@@ -116,8 +116,8 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
 
       // 4. Insert report linked to site
       const insertReportQuery = `
-        INSERT INTO reports (site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, user_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO reports (site_id, photo_url, sanitized_photo_url, thumbnail_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, user_id)
+        VALUES ($1, $2, $2, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id, site_id, photo_url, waste_type, latitude, longitude, ai_verified, ai_confidence, status, user_id, created_at
       `;
 

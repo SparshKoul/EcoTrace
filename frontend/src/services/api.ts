@@ -443,6 +443,8 @@ interface V1RawReport extends Omit<FeedReport, 'detected_items' | 'letter'> {
 const mapV1Report = (raw: V1RawReport): FeedReport => ({
   ...raw,
   detected_items: asList(raw.detected_items),
+  thumbnail_url: raw.thumbnail_url || raw.sanitized_media_url || null,
+  sanitized_media_url: raw.sanitized_media_url || raw.thumbnail_url || null,
 });
 
 export async function submitV1Report(input: {

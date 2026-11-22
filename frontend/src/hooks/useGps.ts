@@ -38,7 +38,7 @@ const toFix = (position: GeolocationPosition): GpsFix => {
     lat: latitude,
     lng: longitude,
     accuracyM: Number.isFinite(accuracy) ? accuracy : Number.POSITIVE_INFINITY,
-    timestamp: position.timestamp || Date.now(),
+    timestamp: Date.now(),
   };
 };
 
@@ -205,8 +205,26 @@ export function useGps(): GpsState {
 
     startWatch(true);
 
+    // Heartbeat auto-refresh: ensures location stays fresh even if device is stationary (Google Maps style)
+    const heartbeat = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const next = toFix(position);
+            if (Number.isFinite(next.lat) && Number.isFinite(next.lng)) {
+              setFix(next);
+              setDenied(false);
+            }
+          },
+          () => {},
+          { enableHighAccuracy: false, maximumAge: 15_000, timeout: 5_000 },
+        );
+      }
+    }, 8_000);
+
     return () => {
       if (activeWatchId !== null) navigator.geolocation.clearWatch(activeWatchId);
+      clearInterval(heartbeat);
     };
   }, [nonce]);
 

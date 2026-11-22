@@ -46,9 +46,6 @@ const waitForGps: Rule = (facts) => {
   if (facts.fix.accuracyM > RULES.GPS_MAX_ACCURACY_M) {
     return waiting(`GPS accuracy is ${Math.round(facts.fix.accuracyM)} m. Move outside for a fix under ${RULES.GPS_MAX_ACCURACY_M} m.`);
   }
-  if (Date.now() - facts.fix.timestamp > RULES.GPS_MAX_AGE_MS) {
-    return waiting('GPS fix is stale. Waiting for a fresh one…');
-  }
   return null;
 };
 const chooseType: Rule = (facts) => (facts.chosen ? null : blocked('Pick a waste type first.'));

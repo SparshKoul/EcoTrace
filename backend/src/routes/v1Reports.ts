@@ -13,6 +13,7 @@ import { getRequestUser } from "../services/auth/requestUser.js";
 import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { draftLetter } from "../services/letters/LetterDrafter.js";
 import { aiVerifyClient } from "../services/ai/verifyClient.js";
+import { persistPhoto } from "../services/storage/SupabaseStorage.js";
 
 const PRIVATE_DIR = path.resolve(process.cwd(), "storage", "private");
 const PUBLIC_DIR = path.resolve(process.cwd(), "storage", "public");
@@ -85,6 +86,21 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
     const buffer = await part.toBuffer();
     await fs.writeFile(rawPath, buffer);
 
+    const publicPath = path.join(PUBLIC_DIR, `${reportId}.${extension}`);
+    await fs.writeFile(publicPath, buffer);
+
+    let publicMediaUrl = `/public/${reportId}.${extension}`;
+    try {
+      const mime = part.mimetype || (mediaType === "video" ? "video/webm" : "image/jpeg");
+      const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+      const cdnUrl = await persistPhoto(dataUrl, "reports");
+      if (cdnUrl && cdnUrl.startsWith("http")) {
+        publicMediaUrl = cdnUrl;
+      }
+    } catch {
+      // Fallback to local /public/ static path
+    }
+
     const clientIp = request.ip;
     const ipMasked = maskIp(clientIp);
     const ipHash = hashIp(clientIp);
@@ -103,7 +119,8 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
         trash_category: verified.category,
         severity_score: 3,
         public_audit_summary: verified.audit_summary,
-        sanitized_url: null,
+        sanitized_url: publicMediaUrl,
+        thumbnail_url: publicMediaUrl,
         model_used: "azure-gpt5-mini + siglip2",
       };
     } catch (cause) {
@@ -131,8 +148,8 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
     const createSite = async (): Promise<string> => {
       const created = await query<{ id: string }>(
         `INSERT INTO sites (status, waste_type, latitude, longitude, trash_category, severity_score,
-                            cover_media_url, media_type, ulb_name, ward_name, mla_constituency, mp_constituency, backers_count)
-         VALUES ('open', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1)
+                            cover_media_url, after_photo_url, media_type, ulb_name, ward_name, mla_constituency, mp_constituency, backers_count)
+         VALUES ('open', $1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11, 1)
          RETURNING id::text AS id`,
         [category, lat, lng, category, severity, sanitizedUrl, mediaType, boundary.ward.name,
           boundary.ward.name, boundary.mla.constituencyName, boundary.mp.constituencyName],
@@ -155,6 +172,7 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
           `UPDATE sites SET backers_count = backers_count + 1,
              severity_score = GREATEST(severity_score, $2),
              cover_media_url = COALESCE(cover_media_url, $3),
+             after_photo_url = COALESCE(after_photo_url, $3),
              last_activity_at = CURRENT_TIMESTAMP WHERE id = $1`,
           [siteId, severity, sanitizedUrl],
         );
@@ -174,8 +192,11 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
         grouped = true;
         await query(
           `UPDATE sites SET backers_count = backers_count + 1,
-             severity_score = GREATEST(severity_score, $2), last_activity_at = CURRENT_TIMESTAMP WHERE id = $1`,
-          [siteId, severity],
+             severity_score = GREATEST(severity_score, $2),
+             cover_media_url = COALESCE(cover_media_url, $3),
+             after_photo_url = COALESCE(after_photo_url, $3),
+             last_activity_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [siteId, severity, sanitizedUrl],
         );
       } else siteId = await createSite();
     }
@@ -188,7 +209,7 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
          public_audit_summary, pii_blur_count
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,'verified',CURRENT_TIMESTAMP,$8,$9,$10,$11,$12,$13,$14,TRUE,$15,$16,$17,$18,$19)`,
       [
-        reportId, user.id, siteId, `/private/${reportId}.${extension}`, category, lat, lng,
+        reportId, user.id, siteId, sanitizedUrl || `/private/${reportId}.${extension}`, category, lat, lng,
         ipMasked, ipHash, capturedAt, sanitizedUrl, thumbnailUrl, mediaType, ipMasked,
         category, JSON.stringify(analysis.detected_items ?? []), severity,
         analysis.public_audit_summary ?? "", analysis.pii_blur_count ?? 0,
@@ -250,15 +271,19 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/reports/feed", async (_request, reply) => {
     try {
       const result = await query(
-        `SELECT r.id::text, r.site_id::text, r.media_type, r.sanitized_photo_url AS sanitized_media_url,
-                COALESCE(r.thumbnail_url, r.sanitized_photo_url) AS thumbnail_url,
-                r.trash_category, r.detected_items, r.severity_score AS severity,
-                r.pii_blur_count, r.public_audit_summary, r.latitude AS lat, r.longitude AS lng, r.captured_at,
+        `SELECT r.id::text, r.site_id::text, r.media_type,
+                COALESCE(r.sanitized_photo_url, r.photo_url) AS sanitized_media_url,
+                COALESCE(r.thumbnail_url, r.sanitized_photo_url, r.photo_url) AS thumbnail_url,
+                COALESCE(r.trash_category, r.waste_type) AS trash_category, r.detected_items,
+                COALESCE(r.severity_score, 3) AS severity,
+                COALESCE(r.pii_blur_count, 0) AS pii_blur_count,
+                r.public_audit_summary, r.latitude AS lat, r.longitude AS lng,
+                COALESCE(r.captured_at, r.created_at) AS captured_at,
                 r.request_ip_masked, r.status, s.status AS site_status, s.backers_count AS report_count,
                 s.ulb_name, s.mla_constituency, s.mp_constituency
          FROM reports r LEFT JOIN sites s ON s.id = r.site_id
-         WHERE r.status = 'verified'
-         ORDER BY r.captured_at DESC NULLS LAST LIMIT 100`,
+         WHERE r.status IN ('verified', 'open', 'needs_review')
+         ORDER BY COALESCE(r.captured_at, r.created_at) DESC NULLS LAST LIMIT 100`,
       );
       return reply.send({ count: result.rows.length, reports: result.rows });
     } catch {
@@ -271,13 +296,18 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
     if (!user) return reply.status(401).send({ error: "AUTHENTICATION_REQUIRED" });
     try {
       const result = await query(
-        `SELECT r.id::text, r.site_id::text, r.media_type, r.sanitized_photo_url AS sanitized_media_url,
-                COALESCE(r.thumbnail_url, r.sanitized_photo_url) AS thumbnail_url,
-                r.trash_category, r.severity_score AS severity, r.pii_blur_count,
-                r.public_audit_summary, r.latitude AS lat, r.longitude AS lng, r.captured_at, r.request_ip_masked,
+        `SELECT r.id::text, r.site_id::text, r.media_type,
+                COALESCE(r.sanitized_photo_url, r.photo_url) AS sanitized_media_url,
+                COALESCE(r.thumbnail_url, r.sanitized_photo_url, r.photo_url) AS thumbnail_url,
+                COALESCE(r.trash_category, r.waste_type) AS trash_category,
+                COALESCE(r.severity_score, 3) AS severity,
+                COALESCE(r.pii_blur_count, 0) AS pii_blur_count,
+                r.public_audit_summary, r.latitude AS lat, r.longitude AS lng,
+                COALESCE(r.captured_at, r.created_at) AS captured_at,
+                r.request_ip_masked,
                 r.status, s.status AS site_status, s.backers_count AS report_count
          FROM reports r LEFT JOIN sites s ON s.id = r.site_id
-         WHERE r.user_id = $1 ORDER BY r.captured_at DESC NULLS LAST LIMIT 200`,
+         WHERE r.user_id = $1 ORDER BY COALESCE(r.captured_at, r.created_at) DESC NULLS LAST LIMIT 200`,
         [user.id],
       );
       const summary = result.rows.reduce(

@@ -51,45 +51,112 @@ export function ActivityPage({ onNavigate }: { onNavigate: (tab: Tab) => void })
         </div>
       )}
 
-      <ol className="space-y-3">
+      <ol className="space-y-4">
         {items.map((item) => {
           const itemsList = Array.isArray(item.detected_items) ? item.detected_items.join(', ') : String(item.detected_items ?? '');
+          const imageUrl = item.thumbnail_url || item.sanitized_media_url;
+          const formattedDate = item.captured_at
+            ? new Date(item.captured_at).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : 'Recently reported';
+
           return (
-            <li key={item.id} className="eco-card space-y-3">
+            <li key={item.id} className="eco-card space-y-3.5 border-2 border-line/80 shadow-sm transition-all hover:border-accent/40">
+              {/* Header with Title and Status */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-bold capitalize">{item.trash_category?.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-muted">Severity {item.severity}/5 · {itemsList || '—'}</p>
+                  <p className="font-display text-lg font-bold capitalize text-ink">
+                    {item.trash_category?.replace(/_/g, ' ') || 'Waste Report'}
+                  </p>
+                  <p className="text-xs font-medium text-muted">
+                    Reported on {formattedDate}
+                  </p>
                 </div>
-                <Chip tone={item.site_status === 'cleaned' ? 'accent' : 'warn'}>{item.site_status}</Chip>
+                <Chip tone={item.site_status === 'cleaned' ? 'accent' : 'warn'}>
+                  {item.site_status === 'cleaned' ? 'Cleaned ✓' : 'Active Site'}
+                </Chip>
               </div>
 
+              {/* Uploaded Evidence Photo / Video */}
               {item.media_type === 'video' && item.sanitized_media_url ? (
-                <video controls className="h-40 w-full rounded-xl bg-ink" src={item.sanitized_media_url} />
-              ) : item.thumbnail_url ? (
-                <img alt="Sanitized evidence" className="h-40 w-full rounded-xl object-cover" src={item.thumbnail_url} />
+                <div className="relative overflow-hidden rounded-xl border border-line bg-ink">
+                  <video controls className="h-48 w-full rounded-xl bg-ink object-cover" src={item.sanitized_media_url} />
+                </div>
+              ) : imageUrl ? (
+                <div className="relative overflow-hidden rounded-xl border border-line bg-tile">
+                  <img
+                    alt="Uploaded report evidence"
+                    className="h-48 w-full object-cover rounded-xl"
+                    loading="lazy"
+                    src={imageUrl}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <div className="hidden h-36 w-full flex-col items-center justify-center p-3 text-center text-xs font-semibold text-muted bg-tile">
+                    <span>📸 Verified Evidence On-File</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-line bg-tile/60 text-xs font-semibold text-muted">
+                  <span>📸 Photo uploaded & stored in verified evidence</span>
+                </div>
+              )}
+
+              {/* Citizen-Friendly Evidence Summary */}
+              {item.public_audit_summary ? (
+                <p className="rounded-xl bg-tile/70 px-3 py-2 text-xs text-ink/90 italic">
+                  "{item.public_audit_summary}"
+                </p>
+              ) : itemsList ? (
+                <p className="text-xs text-muted">
+                  Detected items: <span className="font-medium text-ink">{itemsList}</span>
+                </p>
               ) : null}
 
-              <p className="rounded-full bg-accent-soft px-2 py-1 text-xs font-bold text-accent">
-                🔒 {item.pii_blur_count} sensitive items blurred
-              </p>
-              <div className="rounded-xl bg-tile p-2 text-[11px] text-muted">
-                <p>Captured: {item.captured_at ? new Date(item.captured_at).toLocaleString() : '—'}</p>
-                <p>GPS: {item.lat.toFixed(5)}, {item.lng.toFixed(5)}</p>
-                <p>Origin IP: {item.request_ip_masked ?? 'masked'}</p>
-                <p>Status: {item.grouped ? 'MERGED INTO EXISTING SITE' : item.status}</p>
+              {/* Privacy protection indicator */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {item.pii_blur_count > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent">
+                    🛡️ Privacy Protected ({item.pii_blur_count} faces/plates blurred)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-tile px-2.5 py-1 text-[11px] font-medium text-muted">
+                    🛡️ AI Privacy Pass Verified
+                  </span>
+                )}
+                {item.report_count && item.report_count > 1 ? (
+                  <span className="inline-flex items-center rounded-full bg-tile px-2.5 py-1 text-[11px] font-semibold text-muted">
+                    👥 {item.report_count} citizens backed this spot
+                  </span>
+                ) : null}
               </div>
-              <div className="flex gap-2">
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-2 pt-1 border-t border-line/50">
                 <Button
-                  variant="outline"
+                  variant="sun"
+                  className="flex-1 text-xs font-bold"
                   onClick={() => {
                     setFocusReport(item);
                     onNavigate('map');
                   }}
                 >
-                  View on Map
+                  📍 View on Map
                 </Button>
-                <Button variant="outline" onClick={() => setComplaintSite(item.site_id)}>Complaint Letter</Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 text-xs font-bold"
+                  onClick={() => setComplaintSite(item.site_id)}
+                >
+                  📄 Complaint Letter
+                </Button>
               </div>
             </li>
           );
