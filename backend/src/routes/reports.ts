@@ -7,6 +7,7 @@ import { resolveBoundary } from "../services/location/boundaryResolver.js";
 import { phase4Memory } from "../services/phase4Store.js";
 import { memory as phase3Memory } from "../services/phase3Store.js";
 import { getRequestUser } from "../services/auth/requestUser.js";
+import { persistPhoto } from "../services/storage/SupabaseStorage.js";
 
 const createReportSchema = z.object({
   photoUrl: z.string().url("Valid photo URL is required"),
@@ -27,10 +28,13 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    const { photoUrl, wasteType, latitude, longitude } = parseResult.data;
+    const { photoUrl: rawPhotoUrl, wasteType, latitude, longitude } = parseResult.data;
     // A valid Supabase token always wins over the optional demo userId field.
     const authUser = await getRequestUser(request);
     const userId = authUser?.id ?? parseResult.data.userId;
+
+    // Persist photo to Supabase Storage bucket (ecotrace-sanitized-public)
+    const photoUrl = await persistPhoto(rawPhotoUrl, "reports");
 
     // 1. Resolve administrative boundaries (Ward, MLA, MP)
     const boundary = resolveBoundary({ latitude, longitude });
@@ -69,15 +73,16 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
         await query(
           `UPDATE sites 
            SET backers_count = backers_count + 1, 
-               last_activity_at = CURRENT_TIMESTAMP 
+               last_activity_at = CURRENT_TIMESTAMP,
+               after_photo_url = COALESCE(after_photo_url, $2)
            WHERE id = $1`,
-          [siteId],
+          [siteId, photoUrl],
         );
       } else {
         // Create brand new site hotspot
         const newSiteResult = await query(
-          `INSERT INTO sites (waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 1, 'open')
+          `INSERT INTO sites (waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, after_photo_url, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 1, $7, 'open')
            RETURNING id`,
           [
             wasteType,
@@ -86,6 +91,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
             boundary.ward.name,
             boundary.mla.constituencyName,
             boundary.mp.constituencyName,
+            photoUrl,
           ],
         );
         siteId = newSiteResult.rows[0].id;

@@ -127,6 +127,7 @@ export async function fetchSites(): Promise<Site[]> {
       id: string; status: string; waste_type: string; latitude: number; longitude: number;
       severity?: number; backers_count: number; ward_name?: string;
       mla_constituency?: string; mp_constituency?: string;
+      after_photo_url?: string | null;
       first_reported_at: string; last_activity_at: string;
     }[];
   };
@@ -142,7 +143,7 @@ export async function fetchSites(): Promise<Site[]> {
     reportCount: Number(row.backers_count ?? 0),
     reporterCount: Number(row.backers_count ?? 0),
     nearBin: false,
-    evidenceUrl: null,
+    evidenceUrl: row.after_photo_url || null,
     boundary: { ulb: row.ward_name ?? null, mla: row.mla_constituency ?? null, mp: row.mp_constituency ?? null },
     createdAt: row.first_reported_at,
     updatedAt: row.last_activity_at,

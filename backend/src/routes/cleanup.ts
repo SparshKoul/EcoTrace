@@ -7,6 +7,7 @@ import {
   startCleanup,
   validateCleanup,
 } from "../services/sites/CleanupService.js";
+import { persistPhoto } from "../services/storage/SupabaseStorage.js";
 
 const startSchema = z.object({
   afterPhotoUrl: z.string().min(1, "afterPhotoUrl is required"),
@@ -31,9 +32,10 @@ export const cleanupRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: "Validation failed", details: parsed.error.format() });
     }
 
+    const afterPhotoUrl = await persistPhoto(parsed.data.afterPhotoUrl, "cleanups");
     const result = await startCleanup({
       siteId: id,
-      afterPhotoUrl: parsed.data.afterPhotoUrl,
+      afterPhotoUrl,
       uploaderId: parsed.data.userId,
       latitude: parsed.data.latitude,
       longitude: parsed.data.longitude,

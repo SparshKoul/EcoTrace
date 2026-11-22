@@ -14,7 +14,7 @@ export const siteRoutes: FastifyPluginAsync = async (app) => {
     };
 
     let sql = `
-      SELECT id, status, waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, COALESCE(severity, 0) AS severity, first_reported_at, last_activity_at
+      SELECT id, status, waste_type, latitude, longitude, ward_name, mla_constituency, mp_constituency, backers_count, COALESCE(severity, 0) AS severity, after_photo_url, first_reported_at, last_activity_at
       FROM sites
       WHERE 1=1
     `;
@@ -48,6 +48,7 @@ export const siteRoutes: FastifyPluginAsync = async (app) => {
         mp_constituency: s.mp,
         backers_count: s.backersCount,
         severity: s.severity,
+        after_photo_url: s.afterPhotoUrl ?? null,
         first_reported_at: s.firstReportedAt,
         last_activity_at: s.lastActivityAt,
       }));
