@@ -11,6 +11,7 @@ pydantic-settings>=2.2,<3.0
 #   pip install -r requirements.txt
 torch>=2.4
 ultralytics>=8.3.0     # YOLO26 checkpoints (yolo26n.pt etc.)
+pi-heif>=1.4.0         # ultralytics dependency — pin so no runtime pip install (Render)
 opencv-python-headless>=4.9
 pillow>=10.4
 numpy>=1.26,<3.0
