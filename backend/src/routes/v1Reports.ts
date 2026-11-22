@@ -171,8 +171,8 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
         await query(
           `UPDATE sites SET backers_count = backers_count + 1,
              severity_score = GREATEST(severity_score, $2),
-             cover_media_url = COALESCE(cover_media_url, $3),
-             after_photo_url = COALESCE(after_photo_url, $3),
+             cover_media_url = COALESCE($3, cover_media_url),
+             after_photo_url = COALESCE($3, after_photo_url),
              last_activity_at = CURRENT_TIMESTAMP WHERE id = $1`,
           [siteId, severity, sanitizedUrl],
         );
@@ -193,8 +193,8 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
         await query(
           `UPDATE sites SET backers_count = backers_count + 1,
              severity_score = GREATEST(severity_score, $2),
-             cover_media_url = COALESCE(cover_media_url, $3),
-             after_photo_url = COALESCE(after_photo_url, $3),
+             cover_media_url = COALESCE($3, cover_media_url),
+             after_photo_url = COALESCE($3, after_photo_url),
              last_activity_at = CURRENT_TIMESTAMP WHERE id = $1`,
           [siteId, severity, sanitizedUrl],
         );
@@ -256,11 +256,21 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/sites", async (_request, reply) => {
     try {
       const result = await query(
-        `SELECT id::text, status, waste_type, latitude, longitude, trash_category, severity_score,
-                backers_count AS report_count, cover_media_url, media_type,
-                ulb_name, mla_constituency, mp_constituency, first_reported_at AS created_at,
-                last_activity_at AS updated_at
-         FROM sites ORDER BY last_activity_at DESC LIMIT 200`,
+        `SELECT s.id::text, s.status, s.waste_type, s.latitude, s.longitude, s.trash_category,
+                COALESCE(s.severity_score, s.severity, 3) AS severity_score,
+                s.backers_count AS report_count,
+                COALESCE(
+                  (SELECT COALESCE(r.sanitized_photo_url, r.photo_url)
+                   FROM reports r
+                   WHERE r.site_id = s.id AND (r.photo_url NOT LIKE '%example.com%' OR r.sanitized_photo_url IS NOT NULL)
+                   ORDER BY r.created_at DESC LIMIT 1),
+                  CASE WHEN s.cover_media_url LIKE '%example.com%' THEN NULL ELSE s.cover_media_url END,
+                  CASE WHEN s.after_photo_url LIKE '%example.com%' THEN NULL ELSE s.after_photo_url END
+                ) AS cover_media_url,
+                s.media_type,
+                s.ulb_name, s.mla_constituency, s.mp_constituency, s.first_reported_at AS created_at,
+                s.last_activity_at AS updated_at
+         FROM sites s ORDER BY s.last_activity_at DESC LIMIT 200`,
       );
       return reply.send({ count: result.rows.length, sites: result.rows });
     } catch {

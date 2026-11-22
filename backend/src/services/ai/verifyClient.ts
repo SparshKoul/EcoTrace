@@ -63,7 +63,7 @@ export class AiVerifyClient {
     }
 
     if (photoDataOrUrl.startsWith("http://") || photoDataOrUrl.startsWith("https://")) {
-      const res = await fetch(photoDataOrUrl, { signal: AbortSignal.timeout(10_000) });
+      const res = await fetch(photoDataOrUrl, { signal: AbortSignal.timeout(5_000) });
       const arrayBuf = await res.arrayBuffer();
       return {
         mimeType: res.headers.get("content-type") || "image/jpeg",
@@ -124,7 +124,7 @@ export class AiVerifyClient {
         method: "POST",
         headers,
         body: form,
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(5_000),
       });
 
       if (!response.ok) {

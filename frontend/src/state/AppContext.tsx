@@ -198,10 +198,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }) => {
     const result = await submitV1Report(input);
     setLastReport(result);
-    await refresh();
+    setFocusReport(result);
+
+    // Optimistically reflect the site on the map immediately
+    const optimisticSite: Site = {
+      id: result.site_id,
+      lat: result.lat,
+      lng: result.lng,
+      type: (['dump', 'construction', 'water', 'overflowing_bin', 'no_bin'].includes(result.trash_category)
+        ? result.trash_category : 'dump') as Site['type'],
+      wasteStream: 'mixed',
+      severity: Number(result.severity || 60),
+      status: 'open',
+      reportCount: Number(result.report_count || 1),
+      reporterCount: Number(result.report_count || 1),
+      nearBin: false,
+      evidenceUrl: result.sanitized_media_url || result.thumbnail_url,
+      boundary: { ulb: result.ulb_name ?? null, mla: result.mla_constituency ?? null, mp: result.mp_constituency ?? null },
+      createdAt: result.captured_at || new Date().toISOString(),
+      updatedAt: result.captured_at || new Date().toISOString(),
+    };
+
+    setSites((current) => {
+      const idx = current.findIndex((s) => s.id === result.site_id);
+      if (idx >= 0) {
+        const next = [...current];
+        next[idx] = {
+          ...next[idx]!,
+          reportCount: (next[idx]!.reportCount || 0) + 1,
+          reporterCount: (next[idx]!.reporterCount || 0) + 1,
+          evidenceUrl: result.sanitized_media_url || result.thumbnail_url || next[idx]!.evidenceUrl,
+          updatedAt: result.captured_at || new Date().toISOString(),
+        };
+        return next;
+      }
+      return [optimisticSite, ...current];
+    });
+
+    setFeed((current) => [result, ...current.filter((r) => r.id !== result.id)]);
+
+    setActivityV1((current) => current ? {
+      ...current,
+      summary: {
+        ...current.summary,
+        total_reports: current.summary.total_reports + 1,
+        active_sites: current.summary.active_sites + 1,
+      },
+      activity: [result, ...current.activity.filter((r) => r.id !== result.id)],
+    } : {
+      user_id: user?.id ?? '',
+      summary: { total_reports: 1, pii_protected: 1, active_sites: 1, cleaned_sites: 0 },
+      activity: [result],
+    });
+
     notify(result.grouped ? 'Report merged into an existing nearby site.' : 'New site published to the map.');
+    void refresh();
     return result;
-  }, [refresh, notify]);
+  }, [user?.id, refresh, notify]);
 
   const value = useMemo<AppContextValue>(() => ({
     sites, areas, activity, v1Sites, feed, activityV1, lastReport, focusReport, setFocusReport, loading,

@@ -39,7 +39,7 @@ export default function App() {
           }
         >
           {tab === 'map' && <MapPage onNavigate={setTab} />}
-          {tab === 'report' && <CapturePanel />}
+          {tab === 'report' && <CapturePanel onNavigate={setTab} />}
           {tab === 'areas' && <AreasPage />}
           {tab === 'activity' && <ActivityPage onNavigate={setTab} />}
           {tab === 'account' && <AccountPage />}

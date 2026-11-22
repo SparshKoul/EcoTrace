@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { CircleMarker, MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import { PILOT_CENTRE, TILE_ATTRIBUTION, TILE_URL, TYPE_COLOR, TYPE_LABEL } from '../../config/rules';
 import { clusterKey } from '../../domain/geo';
-import type { GeoPoint, Site } from '../../types';
+import type { FeedReport, GeoPoint, Site } from '../../types';
 import { Chip } from '../ui/Chip';
 
 interface SiteMapProps {
@@ -11,8 +11,12 @@ interface SiteMapProps {
   readonly onOpenComplaint: (siteId: string) => void;
   readonly onOpenScores: (site: Site) => void;
   readonly onBackSite?: (siteId: string) => void;
-  /** When set, the map flies here — used after the citizen shares their live location. */
+  /** When set, the map flies here — used after the citizen shares their live location or views a report. */
   readonly focusPoint: GeoPoint | null;
+  /** Target site to auto-open popup for */
+  readonly focusSiteId?: string | null;
+  /** Focused report details from Activity or recent submission */
+  readonly focusReport?: FeedReport | null;
   /** The citizen's last known position, drawn as a blue user dot. */
   readonly userPoint: GeoPoint | null;
 }
@@ -32,15 +36,26 @@ interface Cluster {
   readonly sites: readonly Site[];
 }
 
-export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focusPoint, userPoint }: SiteMapProps) {
+export function SiteMap({
+  sites,
+  onOpenComplaint,
+  onOpenScores,
+  onBackSite,
+  focusPoint,
+  focusSiteId,
+  focusReport,
+  userPoint,
+}: SiteMapProps) {
   const [zoom, setZoom] = useState(12);
   const [map, setMap] = useState<L.Map | null>(null);
+  const markerMapRef = useRef<Map<string, L.Marker>>(new Map());
 
   const onReady = useCallback((instance: L.Map) => setMap(instance), []);
 
   useEffect(() => {
     if (map && focusPoint) {
-      map.flyTo([focusPoint.lat, focusPoint.lng], Math.max(map.getZoom(), 15), { duration: 0.8 });
+      // Zoom in close (17) so clusters separate and the exact site is in focus
+      map.flyTo([focusPoint.lat, focusPoint.lng], Math.max(map.getZoom(), 17), { duration: 0.8 });
     }
   }, [map, focusPoint]);
 
@@ -59,6 +74,18 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focu
       sites: group,
     }));
   }, [sites, zoom]);
+
+  // Automatically open the target popup when clicking "View on Map"
+  useEffect(() => {
+    if (!focusSiteId || !map) return;
+    const timer = setTimeout(() => {
+      const targetMarker = markerMapRef.current.get(focusSiteId);
+      if (targetMarker) {
+        targetMarker.openPopup();
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [focusSiteId, map, clusters]);
 
   return (
     <div className="h-full w-full" aria-label="Map of verified waste sites">
@@ -79,13 +106,21 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focu
           const worst = cluster.sites.reduce((max, site) => Math.max(max, site.severity), 0);
           const isCluster = cluster.sites.length > 1;
           const representative = cluster.sites[0]!;
+          const isTargetSite = focusSiteId ? cluster.sites.some((s) => s.id === focusSiteId) : false;
+
+          const reportMatch = focusReport && cluster.sites.some((s) => s.id === focusReport.site_id);
+          const rawUrl = reportMatch
+            ? (focusReport.sanitized_media_url || focusReport.thumbnail_url || representative.evidenceUrl)
+            : representative.evidenceUrl;
+          const evidenceUrl = rawUrl && !rawUrl.includes('example.com') ? rawUrl : null;
+
           const icon = L.divIcon({
             className: '',
             iconSize: [isCluster ? 42 : 34, isCluster ? 42 : 34],
             iconAnchor: [isCluster ? 21 : 17, isCluster ? 21 : 17],
             html: isCluster
-              ? `<div class="eco-cluster" style="width:42px;height:42px;background:${worst >= 70 ? '#b3261e' : '#0b7a73'}">${cluster.sites.length}</div>`
-              : `<div class="eco-pin ${representative.status === 'verified' ? 'eco-pin--verified' : ''}" style="width:34px;height:34px;background:${TYPE_COLOR[representative.type] ?? '#0b7a73'}">${representative.severity}</div>`,
+              ? `<div class="eco-cluster ${isTargetSite ? 'ring-4 ring-amber-400' : ''}" style="width:42px;height:42px;background:${worst >= 70 ? '#b3261e' : '#0b7a73'}">${cluster.sites.length}</div>`
+              : `<div class="eco-pin ${representative.status === 'verified' ? 'eco-pin--verified' : ''} ${isTargetSite ? 'ring-4 ring-amber-400 scale-110' : ''}" style="width:34px;height:34px;background:${TYPE_COLOR[representative.type] ?? '#0b7a73'}">${representative.severity}</div>`,
           });
 
           return (
@@ -93,13 +128,18 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focu
               key={cluster.key}
               position={[cluster.lat, cluster.lng]}
               icon={icon}
+              ref={(marker) => {
+                if (marker) {
+                  cluster.sites.forEach((site) => markerMapRef.current.set(site.id, marker));
+                }
+              }}
               eventHandlers={{
                 click: () => {
                   if (isCluster) map?.flyTo([cluster.lat, cluster.lng], Math.min(zoom + 3, 18), { duration: 0.5 });
                 },
               }}
             >
-              <Popup minWidth={230}>
+              <Popup minWidth={240}>
                 <div className="space-y-2 text-ink">
                   <div className="flex items-center justify-between gap-2">
                     <strong className="text-sm">
@@ -109,12 +149,13 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focu
                       {representative.status}
                     </Chip>
                   </div>
-                  {!isCluster && representative.evidenceUrl && (
+
+                  {!isCluster && evidenceUrl ? (
                     <div className="relative overflow-hidden rounded-xl bg-tile border border-line">
                       <img
-                        src={representative.evidenceUrl}
+                        src={evidenceUrl}
                         alt="Sanitized evidence from a verified report"
-                        className="h-32 w-full rounded-xl object-cover"
+                        className="h-36 w-full rounded-xl object-cover"
                         loading="lazy"
                         onError={(e) => {
                           e.currentTarget.style.display = 'none';
@@ -126,7 +167,12 @@ export function SiteMap({ sites, onOpenComplaint, onOpenScores, onBackSite, focu
                         <span>📸 Verified Evidence On-File</span>
                       </div>
                     </div>
-                  )}
+                  ) : !isCluster ? (
+                    <div className="flex h-20 w-full flex-col items-center justify-center rounded-xl border border-dashed border-line bg-tile/70 p-2 text-center text-xs font-semibold text-muted">
+                      <span>📸 Verified Evidence Recorded</span>
+                    </div>
+                  ) : null}
+
                   <p className="text-xs text-muted">
                     {representative.reportCount} reports · {representative.reporterCount} distinct reporters ·
                     severity {representative.severity}/100

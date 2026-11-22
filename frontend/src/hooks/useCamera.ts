@@ -94,13 +94,13 @@ export function useCamera(): CameraController {
     const video = videoRef.current;
     if (!video || phase !== 'live' || !video.videoWidth) return null;
     const canvas = document.createElement('canvas');
-    const scale = Math.min(1, 2048 / Math.max(video.videoWidth, video.videoHeight));
+    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
     const context = canvas.getContext('2d');
     if (!context) return null;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.85));
+    return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8));
   }, [phase]);
 
   const startRecording = useCallback(() => {

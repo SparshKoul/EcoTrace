@@ -12,7 +12,7 @@ type Mode = 'photo' | 'walking' | 'no_bin';
 
 const PHOTO_TYPES: readonly ReportType[] = ['dump', 'construction', 'water', 'overflowing_bin'];
 
-export function CapturePanel() {
+export function CapturePanel({ onNavigate }: { onNavigate?: (tab: any) => void } = {}) {
   const { fix, online, signedIn, gpsDenied, sendReport, notify } = useApp();
   const camera = useCamera();
   const [mode, setMode] = useState<Mode>('photo');
@@ -89,6 +89,7 @@ export function CapturePanel() {
       });
       notify(`Report ${receipt.report_id} received. Status: ${receipt.status}.`);
       reset();
+      if (onNavigate) onNavigate('map');
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : 'Submission failed. Try again.');
     } finally {

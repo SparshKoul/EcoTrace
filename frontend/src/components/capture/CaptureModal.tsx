@@ -19,7 +19,7 @@ const STEPS = [
 ];
 
 export function CaptureModal({ onClose, onCreated }: CaptureModalProps) {
-  const { sendV1Report, signedIn } = useApp();
+  const { sendV1Report, signedIn, fix: currentFix } = useApp();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -64,21 +64,21 @@ export function CaptureModal({ onClose, onCreated }: CaptureModalProps) {
     };
   }, []);
 
-  const lockFix = (): Promise<{ lat: number; lng: number; accuracy: number }> =>
-    new Promise((resolve, reject) => {
+  const lockFix = (): Promise<{ lat: number; lng: number; accuracy: number }> => {
+    if (currentFix && Number.isFinite(currentFix.lat) && Number.isFinite(currentFix.lng)) {
+      return Promise.resolve({ lat: currentFix.lat, lng: currentFix.lng, accuracy: currentFix.accuracyM ?? 15 });
+    }
+    return new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const accuracy = position.coords.accuracy;
-          if (accuracy > 50) {
-            reject(new Error(`GPS accuracy ${Math.round(accuracy)} m is too coarse (max 50 m).`));
-            return;
-          }
           resolve({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy });
         },
         () => reject(new Error('Could not lock GPS. Allow location access and try again.')),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
+        { enableHighAccuracy: true, maximumAge: 10_000, timeout: 5_000 },
       );
     });
+  };
 
   const startRecording = () => {
     const stream = streamRef.current;
@@ -111,10 +111,17 @@ export function CaptureModal({ onClose, onCreated }: CaptureModalProps) {
       return;
     }
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d')?.drawImage(video, 0, 0);
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Snapshot failed.'))), 'image/jpeg', 0.9);
+    const maxDim = 1280;
+    const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Canvas context not available.'));
+      return;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Snapshot failed.'))), 'image/jpeg', 0.8);
   });
 
   const submit = async () => {
@@ -139,7 +146,7 @@ export function CaptureModal({ onClose, onCreated }: CaptureModalProps) {
       });
       setStep(2);
       onCreated(result);
-      window.setTimeout(onClose, 900);
+      window.setTimeout(onClose, 500);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Capture failed.');
       setStep(null);

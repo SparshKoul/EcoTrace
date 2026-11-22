@@ -16,7 +16,14 @@ export const siteRoutes: FastifyPluginAsync = async (app) => {
     let sql = `
       SELECT s.id, s.status, s.waste_type, s.latitude, s.longitude, s.ward_name, s.mla_constituency, s.mp_constituency, s.backers_count,
              COALESCE(s.severity, s.severity_score, 0) AS severity,
-             COALESCE(s.after_photo_url, s.cover_media_url, (SELECT photo_url FROM reports r WHERE r.site_id = s.id AND r.photo_url IS NOT NULL ORDER BY r.created_at DESC LIMIT 1)) AS after_photo_url,
+             COALESCE(
+               (SELECT COALESCE(r.sanitized_photo_url, r.photo_url)
+                FROM reports r
+                WHERE r.site_id = s.id AND (r.photo_url NOT LIKE '%example.com%' OR r.sanitized_photo_url IS NOT NULL)
+                ORDER BY r.created_at DESC LIMIT 1),
+               CASE WHEN s.after_photo_url LIKE '%example.com%' THEN NULL ELSE s.after_photo_url END,
+               CASE WHEN s.cover_media_url LIKE '%example.com%' THEN NULL ELSE s.cover_media_url END
+             ) AS after_photo_url,
              s.first_reported_at, s.last_activity_at
       FROM sites s
       WHERE 1=1

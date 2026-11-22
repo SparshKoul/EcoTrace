@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LocalityPanel } from '../components/areas/Scorecard';
 import { CaptureModal } from '../components/capture/CaptureModal';
 import { ComplaintModal } from '../components/complaint/ComplaintModal';
@@ -48,6 +48,31 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       setFocusPoint({ lat: focusReport.lat, lng: focusReport.lng });
     }
   }, [focusReport]);
+
+  // Ensure newly created or focused reports appear on the map immediately
+  const allSites = useMemo(() => {
+    if (!focusReport || sites.some((s) => s.id === focusReport.site_id)) {
+      return sites;
+    }
+    const focusSite: Site = {
+      id: focusReport.site_id,
+      lat: focusReport.lat,
+      lng: focusReport.lng,
+      type: (['dump', 'construction', 'water', 'overflowing_bin', 'no_bin'].includes(focusReport.trash_category)
+        ? focusReport.trash_category : 'dump') as Site['type'],
+      wasteStream: 'mixed',
+      severity: Number(focusReport.severity || 60),
+      status: (focusReport.site_status === 'cleaned' ? 'cleared' : 'open') as Site['status'],
+      reportCount: Number(focusReport.report_count || 1),
+      reporterCount: Number(focusReport.report_count || 1),
+      nearBin: false,
+      evidenceUrl: focusReport.sanitized_media_url || focusReport.thumbnail_url,
+      boundary: { ulb: focusReport.ulb_name ?? null, mla: focusReport.mla_constituency ?? null, mp: focusReport.mp_constituency ?? null },
+      createdAt: focusReport.captured_at || new Date().toISOString(),
+      updatedAt: focusReport.captured_at || new Date().toISOString(),
+    };
+    return [focusSite, ...sites];
+  }, [sites, focusReport]);
 
   // Check if browser already granted or denied permission to avoid prompting again
   useEffect(() => {
@@ -145,11 +170,13 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   return (
     <section className="relative h-full" aria-label="Civic waste map">
       <SiteMap
-        sites={sites}
+        sites={allSites}
         onOpenComplaint={setComplaintSiteId}
         onOpenScores={setLocalitySite}
         onBackSite={backExistingSite}
         focusPoint={focusPoint}
+        focusSiteId={focusReport?.site_id}
+        focusReport={focusReport}
         userPoint={userPoint}
       />
 
