@@ -8,14 +8,26 @@ import {
   type ReactNode,
 } from 'react';
 import { useGps } from '../hooks/useGps';
-import { addSiteNote, backSite, fetchActivity, fetchAreas, fetchSites, submitReport, voteSite } from '../services/api';
+import {
+  addSiteNote, backSite, fetchActivity, fetchAreas, fetchSites, fetchV1Activity, fetchV1Feed, fetchV1Sites,
+  submitReport, submitV1Report, voteSite,
+} from '../services/api';
 import { getMe, signIn, signOut, signUp, type AuthUser } from '../services/auth';
-import type { ActivityItem, Area, ReportReceipt, ReportSubmission, Site } from '../types';
+import type {
+  ActivityItem, ActivityResponse, Area, FeedReport, ReportReceipt, ReportSubmission,
+  Site, V1ReportResult, V1Site,
+} from '../types';
 
 interface AppContextValue {
   readonly sites: Site[];
   readonly areas: Area[];
   readonly activity: ActivityItem[];
+  readonly v1Sites: V1Site[];
+  readonly feed: FeedReport[];
+  readonly activityV1: ActivityResponse | null;
+  readonly lastReport: V1ReportResult | null;
+  readonly focusReport: FeedReport | null;
+  setFocusReport: (report: FeedReport | null) => void;
   readonly loading: boolean;
   readonly fix: ReturnType<typeof useGps>['fix'];
   readonly gpsDenied: boolean;
@@ -36,6 +48,15 @@ interface AppContextValue {
   backExistingSite: (siteId: string) => Promise<void>;
   voteOnSite: (siteId: string, vote: 'confirm' | 'reject' | 'cleaned') => Promise<void>;
   addNoteToSite: (siteId: string, content: string) => Promise<void>;
+  sendV1Report: (input: {
+    media: Blob;
+    mediaType: 'photo' | 'video';
+    lat: number;
+    lng: number;
+    accuracy: number;
+    capturedAt: string;
+    notes: string;
+  }) => Promise<V1ReportResult>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -45,6 +66,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sites, setSites] = useState<Site[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [v1Sites, setV1Sites] = useState<V1Site[]>([]);
+  const [feed, setFeed] = useState<FeedReport[]>([]);
+  const [activityV1, setActivityV1] = useState<ActivityResponse | null>(null);
+  const [lastReport, setLastReport] = useState<V1ReportResult | null>(null);
+  const [focusReport, setFocusReport] = useState<FeedReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(typeof navigator === 'undefined' || navigator.onLine);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -72,12 +98,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [nextSites, nextAreas, nextActivity] = await Promise.all([
-        fetchSites(), fetchAreas(), fetchActivity(),
+      const [nextSites, nextAreas, nextActivity, nextV1Sites, nextFeed, nextActivityV1] = await Promise.all([
+        fetchSites(), fetchAreas(), fetchActivity(), fetchV1Sites(), fetchV1Feed(), fetchV1Activity(),
       ]);
       setSites(nextSites);
       setAreas(nextAreas);
       setActivity(nextActivity);
+      setV1Sites(nextV1Sites);
+      setFeed(nextFeed);
+      setActivityV1(nextActivityV1);
     } catch {
       setToast('Could not refresh civic data. Showing the last known view.');
     } finally {
@@ -158,17 +187,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.id, notify, refresh]);
 
+  const sendV1Report = useCallback(async (input: {
+    media: Blob;
+    mediaType: 'photo' | 'video';
+    lat: number;
+    lng: number;
+    accuracy: number;
+    capturedAt: string;
+    notes: string;
+  }) => {
+    const result = await submitV1Report(input);
+    setLastReport(result);
+    await refresh();
+    notify(result.grouped ? 'Report merged into an existing nearby site.' : 'New site published to the map.');
+    return result;
+  }, [refresh, notify]);
+
   const value = useMemo<AppContextValue>(() => ({
-    sites, areas, activity, loading,
+    sites, areas, activity, v1Sites, feed, activityV1, lastReport, focusReport, setFocusReport, loading,
     fix: gps.fix, gpsDenied: gps.denied, gpsLoading: gps.loading,
     locate: gps.locate, locateByIp: gps.locateByIp,
     online, user, signedIn: user !== null, authLoading, toast,
-    signInUser, signUpUser, signOutUser, notify, refresh, sendReport,
+    signInUser, signUpUser, signOutUser, notify, refresh, sendReport, sendV1Report,
     backExistingSite, voteOnSite, addNoteToSite,
-  }), [sites, areas, activity, loading, gps.fix, gps.denied, gps.loading,
-    gps.locate, gps.locateByIp, online, user, authLoading, toast,
-    signInUser, signUpUser, signOutUser, notify, refresh, sendReport,
-    backExistingSite, voteOnSite, addNoteToSite]);
+  }), [sites, areas, activity, v1Sites, feed, activityV1, lastReport, focusReport, setFocusReport, loading,
+    gps.fix, gps.denied, gps.loading, gps.locate, gps.locateByIp, online, user,
+    authLoading, toast, signInUser, signUpUser, signOutUser, notify, refresh,
+    sendReport, sendV1Report, backExistingSite, voteOnSite, addNoteToSite]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

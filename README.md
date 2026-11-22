@@ -6,6 +6,25 @@ EcoTrace empowers communities and civic authorities to detect, track, and resolv
 
 **See [CHECKLIST.md](./CHECKLIST.md) for what is done and what remains.**
 
+## Run locally
+
+```bash
+# 1. Database: use the hosted Supabase project (credentials in backend/.env, gitignored)
+cd backend && npm install && npm run db:setup
+
+# 2. AI microservice — port 8100 (Gemini key in microservice/.env)
+cd ../microservice
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 -m uvicorn main:app --host 127.0.0.1 --port 8100
+
+# 3. Backend API — port 8000
+cd ../backend && npm run dev
+
+# 4. Frontend — port 5173 (use dev:https for phone camera/GPS)
+cd ../frontend && npm install && npm run dev
+```
+
 ---
 
 ## Architecture & Team Modules

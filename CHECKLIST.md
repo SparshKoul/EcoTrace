@@ -31,6 +31,18 @@
 - [x] `public.users` profile table linked to `auth.users`, auto-created by trigger, backfilled
 - [x] Passwords hashed by Supabase Auth (bcrypt `$2a$10$…`); hash mirrored in `users.password_hash` and hidden from anon/authenticated clients via column-level REVOKE
 
+### AI transparency pipeline (new)
+- [x] `microservice/` FastAPI + OpenCV + `google-genai`: one structured Gemini call for PII boxes, trash authenticity, SWM category, audit summary
+- [x] Irreversible face/plate/sensitive-text blurring via `cv2.GaussianBlur(roi, (99,99), 35)` with 12% padding
+- [x] Raw → `backend/storage/private`, sanitized → `backend/storage/public` served at `/public/...`
+- [x] `POST /api/v1/reports` with `trustProxy`, masked IP + SHA-256 `ip_hash`, exact `captured_at`, 422 on invalid trash
+- [x] PostGIS `ST_DWithin(..., 20)` deduplication with haversine fallback; verified 11 m second report grouped into the same site
+- [x] Frontend privacy/transparency notice before submission
+- [x] Video mode: sharpest keyframe (Laplacian) + sampled-frame PII boxes with nearest-sample interpolation across frames, sanitized MP4 + thumbnail
+- [x] Auth-bound ingestion: `user_id` from Supabase token, `GET /api/v1/sites`, `/reports/feed`, `/users/me/activity`
+- [x] Frontend `CaptureModal` with photo/video, 5–10s clip, GPS/timestamp lock at capture, 3-step progress, and instant map + activity sync
+- [x] Model chain is env-configurable (requested Gemini names first, known-good fallbacks)
+
 ### Authentication
 - [x] Supabase Auth endpoints: `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/signout`
 - [x] Only EcoTrace-created accounts can log in (`app_metadata.ecotrace_account` flag); pre-existing Supabase users get 403 and must sign up
@@ -49,7 +61,7 @@
 - [x] Token-aware API client mapped to the real backend endpoints
 
 ### Verification
-- [x] Backend: **53 tests** passing, typecheck + build clean
+- [x] Backend: **57 tests** passing, typecheck + build clean
 - [x] Frontend: **20 tests** passing, build + lint clean
 - [x] `npm audit` → 0 vulnerabilities on both modules
 - [x] Live smoke tests passed for all Phase 3–5 flows and auth against Supabase
@@ -73,13 +85,11 @@
 - [ ] Wire `uploadRaw()` / `uploadSanitized()` into the report ingestion and AI pipelines
 - [ ] Enforce that raw media never reaches the public bucket
 
-### Microservice (`microservice/` — still empty)
-- [ ] FastAPI scaffold, `/internal/analyze-evidence` shared schema
+### Microservice remaining
 - [ ] Keyframe extraction (Laplacian variance) from walking videos
-- [ ] Face & licence-plate detection + irreversible blurring
-- [ ] YOLOv8 + Vision-LLM waste classification / rejection reasons
-- [ ] Formal complaint drafting with verified SWM 2026 citations
-- [ ] Cleanup validation (`/internal/cleanup/validate`) and note summarizer endpoints consumed by the backend
+- [ ] `/internal/cleanup/validate` and `/internal/summarize-notes` endpoints so the backend stops using its offline fallbacks
+- [ ] Replace mock-AI mode with a real `GEMINI_API_KEY` and confirm the chosen model names are available in your region
+- [ ] Optional local YOLOv8 path for offline/edge inference
 
 ### Frontend ↔ live backend
 - [ ] Set `VITE_USE_MOCK_API=false` and point `VITE_API_BASE_URL` at a reachable backend

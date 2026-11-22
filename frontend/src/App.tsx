@@ -41,7 +41,7 @@ export default function App() {
           {tab === 'map' && <MapPage onNavigate={setTab} />}
           {tab === 'report' && <CapturePanel />}
           {tab === 'areas' && <AreasPage />}
-          {tab === 'activity' && <ActivityPage />}
+          {tab === 'activity' && <ActivityPage onNavigate={setTab} />}
           {tab === 'account' && <AccountPage />}
         </Suspense>
       </main>

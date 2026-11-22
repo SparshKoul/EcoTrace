@@ -1,11 +1,15 @@
 import { API_BASE_URL, PILOT_CENTRE, USE_MOCK_API } from '../config/rules';
 import type {
   ActivityItem,
+  ActivityResponse,
   Area,
   ComplaintLetter,
+  FeedReport,
   ReportReceipt,
   ReportSubmission,
   Site,
+  V1ReportResult,
+  V1Site,
 } from '../types';
 import { computeAreaScores } from '../domain/scores';
 import { getCurrentUserId, getToken } from './auth';
@@ -410,4 +414,102 @@ export async function fetchCityRankings(cityId: string): Promise<{ city: string;
   });
   if (!response.ok) return { city: cityId, count: 0, rankings: [] };
   return response.json() as Promise<{ city: string; count: number; rankings: unknown[] }>;
+}
+
+const asList = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) ? parsed.map(String) : [value];
+    } catch {
+      return [value];
+    }
+  }
+  return [];
+};
+
+interface V1RawReport extends Omit<FeedReport, 'detected_items' | 'letter'> {
+  readonly detected_items: unknown;
+  readonly letter?: {
+    letter_id: string; site_id: string; to: string; cc: string[]; subject: string;
+    body: string; citations: { quote: string }[]; created_at: string;
+  };
+  readonly grouped?: boolean;
+  readonly error?: string;
+  readonly rejection_reason?: string;
+}
+
+const mapV1Report = (raw: V1RawReport): FeedReport => ({
+  ...raw,
+  detected_items: asList(raw.detected_items),
+});
+
+export async function submitV1Report(input: {
+  media: Blob;
+  mediaType: 'photo' | 'video';
+  lat: number;
+  lng: number;
+  accuracy: number;
+  capturedAt: string;
+  notes: string;
+}): Promise<V1ReportResult> {
+  const form = new FormData();
+  const extension = input.mediaType === 'video' ? 'webm' : 'jpg';
+  form.append('media', input.media, `evidence.${extension}`);
+  form.append('media_type', input.mediaType);
+  form.append('lat', String(input.lat));
+  form.append('lng', String(input.lng));
+  form.append('accuracy', String(input.accuracy));
+  form.append('captured_at', input.capturedAt);
+  form.append('notes', input.notes);
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/reports`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+  });
+  const raw = await response.json().catch(() => ({})) as V1RawReport & { error?: string; rejection_reason?: string };
+  if (!response.ok) {
+    throw new Error(raw.rejection_reason ?? raw.error ?? 'The report could not be submitted.');
+  }
+  const report = mapV1Report(raw);
+  const letter = raw.letter!;
+  return {
+    ...report,
+    grouped: raw.grouped ?? false,
+    captured_at: input.capturedAt,
+    letter: {
+      siteId: letter.site_id,
+      recipient: letter.to,
+      cc: letter.cc,
+      subject: letter.subject,
+      body: letter.body,
+      citations: letter.citations.map((citation) => citation.quote),
+      generatedAt: letter.created_at,
+    },
+  };
+}
+
+export async function fetchV1Sites(): Promise<V1Site[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/sites`, { headers: authHeaders() });
+  if (!response.ok) return [];
+  const data = await response.json() as { sites: (Omit<V1Site, 'detected_items'> & { detected_items?: unknown })[] };
+  return data.sites.map((site) => ({ ...site, detected_items: asList(site.detected_items) }));
+}
+
+export async function fetchV1Feed(): Promise<FeedReport[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/reports/feed`, { headers: authHeaders() });
+  if (!response.ok) return [];
+  const data = await response.json() as { reports: V1RawReport[] };
+  return data.reports.map(mapV1Report);
+}
+
+export async function fetchV1Activity(): Promise<ActivityResponse | null> {
+  const token = getToken();
+  if (!token) return null;
+  const response = await fetch(`${API_BASE_URL}/api/v1/users/me/activity`, { headers: authHeaders() });
+  if (!response.ok) return null;
+  const data = await response.json() as ActivityResponse;
+  return { ...data, activity: data.activity.map(mapV1Report) };
 }
