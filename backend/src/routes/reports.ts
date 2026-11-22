@@ -42,6 +42,42 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
 
     // Option 1: Civic Validation Pipeline - reject submissions judged as non-waste
     if (aiResult.status === "REJECTED") {
+      if (userId) {
+        try {
+          const rejectedReport = await query(
+            `INSERT INTO reports (
+               site_id, photo_url, sanitized_photo_url, thumbnail_url, waste_type,
+               latitude, longitude, ai_verified, ai_confidence, status, user_id,
+               is_valid_trash, public_audit_summary, created_at
+             ) VALUES (NULL, NULL, NULL, NULL, $1, $2, $3, FALSE, $4, 'rejected', $5, FALSE, $6, CURRENT_TIMESTAMP)
+             RETURNING id, created_at`,
+            [
+              wasteType,
+              latitude,
+              longitude,
+              aiResult.confidence ?? 0,
+              userId,
+              aiResult.rejection_reason || aiResult.audit_summary || "Rejected by AI Vision Judge as non-waste.",
+            ],
+          );
+          if (rejectedReport.rows[0]) {
+            phase4Memory.saveReport({
+              id: String(rejectedReport.rows[0].id),
+              site_id: "",
+              user_id: userId,
+              photo_url: "",
+              waste_type: wasteType,
+              latitude,
+              longitude,
+              status: "rejected",
+              created_at: new Date(String(rejectedReport.rows[0].created_at)).toISOString(),
+            });
+          }
+        } catch (dbErr) {
+          request.log.warn(dbErr, "Could not record rejected report row in DB");
+        }
+      }
+
       return reply.status(422).send({
         error: "AI_VERIFICATION_REJECTED",
         message: aiResult.rejection_reason || "The submitted image was evaluated by AI and rejected as non-waste.",
@@ -54,7 +90,7 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    // 2. Persist verified photo to Supabase Storage bucket (ecotrace-sanitized-public)
+    // 2. Persist verified photo to Supabase Storage bucket (ecotrace-sanitized-public) - ONLY IF VERIFIED!
     const photoUrl = await persistPhoto(rawPhotoUrl, "reports");
 
     // 3. Resolve administrative boundaries (Ward, MLA, MP)

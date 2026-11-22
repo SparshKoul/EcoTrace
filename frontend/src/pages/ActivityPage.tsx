@@ -53,6 +53,7 @@ export function ActivityPage({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
       <ol className="space-y-4">
         {items.map((item) => {
+          const isRejected = item.status === 'rejected' || item.status === 'REJECTED' || !item.site_id;
           const itemsList = Array.isArray(item.detected_items) ? item.detected_items.join(', ') : String(item.detected_items ?? '');
           const imageUrl = item.thumbnail_url || item.sanitized_media_url;
           const formattedDate = item.captured_at
@@ -65,24 +66,37 @@ export function ActivityPage({ onNavigate }: { onNavigate: (tab: Tab) => void })
             : 'Recently reported';
 
           return (
-            <li key={item.id} className="eco-card space-y-3.5 border-2 border-line/80 shadow-sm transition-all hover:border-accent/40">
+            <li
+              key={item.id}
+              className={`eco-card space-y-3.5 border-2 shadow-sm transition-all ${
+                isRejected ? 'border-red-200/80 bg-red-50/20' : 'border-line/80 hover:border-accent/40'
+              }`}
+            >
               {/* Header with Title and Status */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-display text-lg font-bold capitalize text-ink">
-                    {item.trash_category?.replace(/_/g, ' ') || 'Waste Report'}
+                    {isRejected ? 'Submission Flagged / Non-Waste' : item.trash_category?.replace(/_/g, ' ') || 'Waste Report'}
                   </p>
                   <p className="text-xs font-medium text-muted">
                     Reported on {formattedDate}
                   </p>
                 </div>
-                <Chip tone={item.site_status === 'cleaned' ? 'accent' : 'warn'}>
-                  {item.site_status === 'cleaned' ? 'Cleaned ✓' : 'Active Site'}
+                <Chip tone={isRejected ? 'bad' : item.site_status === 'cleaned' ? 'accent' : 'warn'}>
+                  {isRejected ? '🔴 Rejected by AI' : item.site_status === 'cleaned' ? 'Cleaned ✓' : 'Active Site'}
                 </Chip>
               </div>
 
               {/* Uploaded Evidence Photo / Video */}
-              {item.media_type === 'video' && item.sanitized_media_url ? (
+              {isRejected ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-red-300 bg-red-50/70 p-4 text-center text-xs">
+                  <span className="text-2xl">🚫</span>
+                  <span className="mt-1 font-bold text-red-900">Media Discarded</span>
+                  <span className="mt-0.5 text-[11px] text-red-700">
+                    Evaluated as non-waste by AI Vision Judge and rejected. Not stored in public storage or on map.
+                  </span>
+                </div>
+              ) : item.media_type === 'video' && item.sanitized_media_url ? (
                 <div className="relative overflow-hidden rounded-xl border border-line bg-ink">
                   <video controls className="h-48 w-full rounded-xl bg-ink object-cover" src={item.sanitized_media_url} />
                 </div>
@@ -111,7 +125,9 @@ export function ActivityPage({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
               {/* Citizen-Friendly Evidence Summary */}
               {item.public_audit_summary ? (
-                <p className="rounded-xl bg-tile/70 px-3 py-2 text-xs text-ink/90 italic">
+                <p className={`rounded-xl px-3 py-2 text-xs italic ${
+                  isRejected ? 'bg-red-100/60 text-red-950 border border-red-200/50' : 'bg-tile/70 text-ink/90'
+                }`}>
                   "{item.public_audit_summary}"
                 </p>
               ) : itemsList ? (
@@ -122,7 +138,11 @@ export function ActivityPage({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
               {/* Privacy protection indicator */}
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                {item.pii_blur_count > 0 ? (
+                {isRejected ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-800">
+                    ✕ Gated: Zero Public CDN Footprint
+                  </span>
+                ) : item.pii_blur_count > 0 ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent">
                     🛡️ Privacy Protected ({item.pii_blur_count} faces/plates blurred)
                   </span>
@@ -139,25 +159,33 @@ export function ActivityPage({ onNavigate }: { onNavigate: (tab: Tab) => void })
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 pt-1 border-t border-line/50">
-                <Button
-                  variant="sun"
-                  className="flex-1 text-xs font-bold"
-                  onClick={() => {
-                    setFocusReport(item);
-                    onNavigate('map');
-                  }}
-                >
-                  📍 View on Map
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 text-xs font-bold"
-                  onClick={() => setComplaintSite(item.site_id)}
-                >
-                  📄 Complaint Letter
-                </Button>
-              </div>
+              {isRejected ? (
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-line/50">
+                  <div className="flex-1 rounded-xl bg-red-100/60 py-2.5 px-3 text-center text-xs font-semibold text-red-800">
+                    ⚠️ Non-waste submission — not eligible for public map or legal complaint
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-line/50">
+                  <Button
+                    variant="sun"
+                    className="flex-1 text-xs font-bold"
+                    onClick={() => {
+                      setFocusReport(item);
+                      onNavigate('map');
+                    }}
+                  >
+                    📍 View on Map
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 text-xs font-bold"
+                    onClick={() => setComplaintSite(item.site_id)}
+                  >
+                    📄 Complaint Letter
+                  </Button>
+                </div>
+              )}
             </li>
           );
         })}

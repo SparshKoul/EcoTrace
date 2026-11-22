@@ -86,6 +86,74 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
     const buffer = await part.toBuffer();
     await fs.writeFile(rawPath, buffer);
 
+    const clientIp = request.ip;
+    const ipMasked = maskIp(clientIp);
+    const ipHash = hashIp(clientIp);
+
+    let analysis: AnalysisResponse;
+    try {
+      const verified = await aiVerifyClient.verifyBuffer(buffer, part.mimetype || (mediaType === "video" ? "video/webm" : "image/jpeg"), {
+        reportId,
+        reportType: "garbage_dump",
+        latitude: lat,
+        longitude: lng,
+      });
+      analysis = {
+        is_valid_trash: verified.is_waste,
+        rejection_reason: verified.rejection_reason,
+        trash_category: verified.category,
+        severity_score: 3,
+        public_audit_summary: verified.audit_summary,
+        sanitized_url: "",
+        thumbnail_url: "",
+        model_used: "azure-gpt5-mini + siglip2",
+      };
+    } catch (cause) {
+      await fs.unlink(rawPath).catch(() => undefined);
+      request.log.error(cause, "AI media processing failed");
+      return reply.status(503).send({ error: "AI_SERVICE_UNAVAILABLE" });
+    }
+
+    if (!analysis.is_valid_trash) {
+      await fs.unlink(rawPath).catch(() => undefined);
+      // Log rejected report in DB for user's Activity feed WITHOUT uploading to Supabase Storage
+      if (user?.id) {
+        try {
+          await query(
+            `INSERT INTO reports (
+               id, user_id, site_id, photo_url, waste_type, latitude, longitude, status, created_at,
+               ip_masked, ip_hash, captured_at, sanitized_photo_url, thumbnail_url, media_type,
+               request_ip_masked, is_valid_trash, trash_category, detected_items, severity_score,
+               public_audit_summary, pii_blur_count
+             ) VALUES ($1,$2,NULL,NULL,'garbage_dump',$3,$4,'rejected',CURRENT_TIMESTAMP,$5,$6,$7,NULL,NULL,$8,$5,FALSE,'non_waste','[]',0,$9,0)`,
+            [
+              reportId,
+              user.id,
+              lat,
+              lng,
+              ipMasked,
+              ipHash,
+              capturedAt,
+              mediaType,
+              analysis.rejection_reason || "The submitted image was evaluated by AI and rejected as non-waste.",
+            ],
+          );
+        } catch (dbErr) {
+          request.log.warn(dbErr, "Could not write rejected report log to DB");
+        }
+      }
+      return reply.status(422).send({
+        error: "INVALID_TRASH",
+        rejection_reason: analysis.rejection_reason ?? "The media was not accepted as outdoor waste.",
+        details: {
+          status: "REJECTED",
+          rejectionReason: analysis.rejection_reason,
+          auditSummary: analysis.public_audit_summary,
+        },
+      });
+    }
+
+    // Only save public files and upload to Supabase Storage AFTER confirmation that it is valid waste!
     const publicPath = path.join(PUBLIC_DIR, `${reportId}.${extension}`);
     await fs.writeFile(publicPath, buffer);
 
@@ -100,42 +168,11 @@ export const v1ReportRoutes: FastifyPluginAsync = async (app) => {
     } catch {
       // Fallback to local /public/ static path
     }
-
-    const clientIp = request.ip;
-    const ipMasked = maskIp(clientIp);
-    const ipHash = hashIp(clientIp);
-
-    let analysis: AnalysisResponse;
-    try {
-      const verified = await aiVerifyClient.verifyBuffer(buffer, part.mimetype || (mediaType === "video" ? "video/webm" : "image/jpeg"), {
-        reportId,
-        reportType: "mixed_municipal",
-        latitude: lat,
-        longitude: lng,
-      });
-      analysis = {
-        is_valid_trash: verified.is_waste,
-        rejection_reason: verified.rejection_reason,
-        trash_category: verified.category,
-        severity_score: 3,
-        public_audit_summary: verified.audit_summary,
-        sanitized_url: publicMediaUrl,
-        thumbnail_url: publicMediaUrl,
-        model_used: "azure-gpt5-mini + siglip2",
-      };
-    } catch (cause) {
-      await fs.unlink(rawPath).catch(() => undefined);
-      request.log.error(cause, "AI media processing failed");
-      return reply.status(503).send({ error: "AI_SERVICE_UNAVAILABLE" });
-    }
-
-    if (!analysis.is_valid_trash) {
-      await fs.unlink(rawPath).catch(() => undefined);
-      return reply.status(422).send({
-        error: "INVALID_TRASH",
-        rejection_reason: analysis.rejection_reason ?? "The media was not accepted as outdoor waste.",
-      });
-    }
+    analysis = {
+      ...analysis,
+      sanitized_url: publicMediaUrl,
+      thumbnail_url: publicMediaUrl,
+    };
 
     const category = analysis.trash_category ?? "mixed_municipal";
     const severity = analysis.severity_score ?? 3;
