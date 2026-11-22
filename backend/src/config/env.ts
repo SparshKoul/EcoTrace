@@ -19,6 +19,8 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   SUPABASE_RAW_BUCKET: z.string().default("ecotrace-raw-private"),
   SUPABASE_PUBLIC_BUCKET: z.string().default("ecotrace-sanitized-public"),
+  /** Shared secret for the AI microservice (X-Internal-Service-Key). Empty = disabled (dev). */
+  INTERNAL_SERVICE_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -39,8 +39,14 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
     // 1. Resolve administrative boundaries (Ward, MLA, MP)
     const boundary = resolveBoundary({ latitude, longitude });
 
-    // 2. Verify photo through AI service
-    const aiResult = await aiVerifyClient.verifyPhoto(photoUrl);
+    // 2. Verify through the AI microservice (YOLO26 + SigLIP 2 + privacy blur).
+    //    The client data URL is decoded server-side by the service, which also
+    //    stores the original privately and the blurred copy separately.
+    const aiResult = await aiVerifyClient.verifyImage(
+      rawPhotoUrl,
+      `rep-${Date.now().toString(36)}`,
+      wasteType,
+    );
 
     try {
       // 3. Check for 20m spatial clustering against existing open sites
@@ -110,9 +116,9 @@ export const reportRoutes: FastifyPluginAsync = async (app) => {
         wasteType,
         latitude,
         longitude,
-        aiResult.is_waste,
+        aiResult.status === "ACCEPTED" || aiResult.is_waste_detected,
         aiResult.confidence,
-        aiResult.is_waste ? "verified" : "needs_review",
+        aiResult.status === "ACCEPTED" ? "verified" : "needs_review",
         userId ?? null,
       ]);
 
