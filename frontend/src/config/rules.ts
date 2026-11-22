@@ -31,17 +31,9 @@ export const RULES = {
   WALKING_MAX_MS: 10_000,
 } as const;
 
-const resolveApiBaseUrl = (): string => {
-  const configured = readString('VITE_API_BASE_URL', '');
-  if (configured) return configured;
-  // If running on a mobile device or LAN IP (e.g. 192.168.x.x), target the same IP on port 8000
-  if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return `${window.location.protocol}//${window.location.hostname}:8000`;
-  }
-  return 'http://localhost:8000';
-};
-
-export const API_BASE_URL = resolveApiBaseUrl();
+// When empty, API requests use relative paths ('/api/...') proxied by Vite on port 5173.
+// This allows mobile testing when only port 5173 is forwarded, avoiding CORS and unreachable port 8000.
+export const API_BASE_URL = readString('VITE_API_BASE_URL', '');
 
 export const USE_MOCK_API = readString('VITE_USE_MOCK_API', 'true').toLowerCase() === 'true';
 
