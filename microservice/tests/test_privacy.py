@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from io import BytesIO
 
 import numpy as np
 from PIL import Image

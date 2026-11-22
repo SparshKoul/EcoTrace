@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     app_name: str = "EcoTrace AI/ML Microservice"
     environment: Literal["development", "staging", "production"] = "development"
     log_level: str = "INFO"
-    api_v1_prefix: str = "/api/v1"
 
     # --- Internal service authentication ----------------------------------
     # Shared secret the Node.js backend must send in ``X-Internal-Service-Key``.
@@ -45,7 +44,6 @@ class Settings(BaseSettings):
     # --- Request limits / security -----------------------------------------
     max_upload_bytes: MaxBytes = 8 * 1024 * 1024  # 8 MiB default upload cap
     max_image_pixels: int = Field(default=40_000_000, gt=0)  # decompression-bomb guard
-    request_timeout_seconds: Seconds = 30.0
     verify_concurrency_limit: int = Field(default=4, ge=1, le=64)  # bounded AWS concurrency
 
     # --- YOLO detector -----------------------------------------------------

@@ -18,8 +18,8 @@ Design notes
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from dataclasses import dataclass
+from typing import Optional
 
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import (
@@ -305,11 +305,6 @@ def _pixel_box(box: dict, width: int, height: int) -> tuple[int, int, int, int]:
     x2 = max(x1 + 1, min(left + w, width))
     y2 = max(y1 + 1, min(top + h, height))
     return x1, y1, x2, y2
-
-
-def _relative_to_pixels(box: dict, width: int, height: int, _cls: type) -> tuple[int, int, int, int]:
-    """Convenience wrapper returning a clamped pixel tuple (any result class)."""
-    return _pixel_box(box, width, height)
 
 
 __all__ = [

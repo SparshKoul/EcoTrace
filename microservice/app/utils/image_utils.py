@@ -182,11 +182,6 @@ def encode_jpeg(image: Image.Image, quality: int = 90) -> bytes:
     return buffer.getvalue()
 
 
-def to_jpeg_bytes(image: Image.Image) -> bytes:
-    """Encode to JPEG bytes (alias used by the pipeline)."""
-    return encode_jpeg(image)
-
-
 __all__ = [
     "ALLOWED_FORMATS",
     "ALLOWED_MIME_TYPES",
@@ -194,5 +189,4 @@ __all__ = [
     "ValidatedImage",
     "validate_upload",
     "encode_jpeg",
-    "to_jpeg_bytes",
 ]

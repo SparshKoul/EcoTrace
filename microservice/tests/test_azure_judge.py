@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.config import Settings
-from app.services.azure_judge_service import AzureFoundryJudge, JudgeAnswer
+from app.services.azure_judge_service import AzureFoundryJudge
 
 
 @pytest.fixture()

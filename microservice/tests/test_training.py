@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from training.prepare_dataset import convert, split_of
 from training.waste_classes import NAMES, class_id_for
 

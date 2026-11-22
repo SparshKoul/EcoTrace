@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.models.siglip_classifier import SiglipClassifier
 from training.waste_classes import NAMES
-from tests.conftest import FakeSiglip, make_test_image
+from tests.conftest import FakeSiglip
 
 
 def test_class_names_are_prompted() -> None:

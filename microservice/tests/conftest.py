@@ -24,7 +24,7 @@ from app.services.azure_judge_service import JudgeResult
 
 # Environment prefixes that must never leak from the developer shell into tests.
 _ENV_PREFIXES = ("YOLO_", "AWS_", "REKOGNITION_", "BEDROCK_", "SIGLIP_", "INTERNAL_", "MAX_", "APP_", "VERIFY_")
-_ENV_EXACT = {"ENVIRONMENT", "LOG_LEVEL", "REQUEST_TIMEOUT_SECONDS"}
+_ENV_EXACT = {"ENVIRONMENT", "LOG_LEVEL"}
 
 
 @pytest.fixture(autouse=True)

@@ -80,14 +80,6 @@ class BedrockSummary(BaseModel):
     error: Optional[str] = None
 
 
-class DecisionResult(str):
-    """ACCEPTED | REJECTED | REVIEW_REQUIRED (plain str until Phase 5)."""
-
-    ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
-    REVIEW_REQUIRED = "REVIEW_REQUIRED"
-
-
 class Decision(BaseModel):
     """Final decision-engine output (rule-based or stacked)."""
 
@@ -170,7 +162,6 @@ __all__ = [
     "SiglipSummary",
     "BedrockSummary",
     "Decision",
-    "DecisionResult",
     "ModelVersions",
     "VerifyResponse",
     "DetectResponse",

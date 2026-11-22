@@ -62,11 +62,6 @@ class YoloDetector:
     def load_error(self) -> Optional[str]:
         return self._load_error
 
-    @property
-    def model_name(self) -> Optional[str]:
-        return getattr(self._model, "ckpt", {}).get("model_name", self.model_path) \
-            if self.is_loaded else None
-
     def load(self) -> bool:
         """Load the checkpoint once. Returns True on success.
 

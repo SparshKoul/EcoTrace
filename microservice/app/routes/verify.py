@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.schemas.request import ReportType
 from app.schemas.response import DetectResponse, ErrorResponse, VerifyResponse
 from app.services.image_processing import ImageValidationError

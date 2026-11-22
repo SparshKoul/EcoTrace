@@ -32,7 +32,6 @@ def test_detector_unavailable_is_reported_not_raised() -> None:
     from app.services.verification_service import VerificationService
     from tests.conftest import TEST_SETTINGS, make_registry
 
-    from app.core.config import Settings
     from app.schemas.request import ReportType
 
     detector = FakeYoloDetector(error="cuda_init_failed")

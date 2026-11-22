@@ -38,8 +38,5 @@ logs/
 .vscode/
 .DS_Store
 
-# --- Reference project ---
-EcoTracerefernce/
-
 # --- Local runtime storage (images) ---
 storage/

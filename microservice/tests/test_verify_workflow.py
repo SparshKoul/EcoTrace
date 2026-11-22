@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 
 from fastapi.testclient import TestClient
-from PIL import Image
 
 from app.core.model_loader import reset_registry
 from app.main import create_app
