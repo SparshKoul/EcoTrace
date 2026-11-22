@@ -1,0 +1,43 @@
+name: ecotrace
+description: "EcoTrace mobile app — AI-powered environmental tracking and civic waste action."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Official Material Design widget library (Flutter >= 3.47). The framework's
+  # package:flutter/material.dart is deprecated in favour of this package.
+  material_ui: ^1.1.0
+
+  # State management (ChangeNotifier + Provider).
+  provider: ^6.1.2
+
+  # REST + multipart uploads to the existing EcoTrace backend.
+  http: ^1.2.2
+  # Media type for the uploaded file part's Content-Type header.
+  http_parser: ^4.1.2
+
+  # Camera capture and gallery selection.
+  image_picker: ^1.1.2
+
+  # GPS coordinates with runtime permission handling.
+  geolocator: ^13.0.2
+
+  # Encrypted-at-rest storage for the Supabase session token.
+  flutter_secure_storage: ^9.2.2
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
