@@ -60,9 +60,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     app.state.settings = settings
 
+    # In production only the Node.js backend origin is allowed. For local
+    # development (no origins configured) all origins are permitted.
+    allowed_origins = [
+        origin.strip()
+        for origin in getattr(settings, "allowed_origins", "").split(",")
+        if origin.strip()
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # internal service; tighten via env in production
+        allow_origins=allowed_origins or ["*"],
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )

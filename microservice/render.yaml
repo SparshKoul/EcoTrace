@@ -1,0 +1,56 @@
+# Render Blueprint — deploy the EcoTrace AI/ML microservice.
+# Docs: https://docs.render.com/blueprints
+# Secrets (sync: false) are entered once in the Render dashboard, never in git.
+services:
+  - type: web
+    name: ecotrace-ai-ml
+    runtime: docker
+    plan: starter             # 2 GB RAM — Free (512 MB) cannot load torch+SigLIP
+    region: oregon            # change to singapore if your team is in Asia
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: AWS_REGION
+        value: ap-south-1
+      - key: REKOGNITION_ENABLED
+        value: "false"        # paid AWS API — off unless explicitly enabled
+      - key: SIGLIP_ENABLED
+        value: "true"
+      - key: BEDROCK_ENABLED
+        value: "false"
+      - key: YOLO_ENABLED
+        value: "true"
+      - key: YOLO_MODEL_PATH
+        value: yolo26n.pt
+      - key: YOLO_DEVICE
+        value: cpu
+      - key: ORIGINAL_IMAGE_DIR
+        value: /var/lib/ecotrace/originals
+      - key: PROCESSED_IMAGE_DIR
+        value: /var/lib/ecotrace/processed
+      # --- Secrets: set these in the Render dashboard (never in git) --------
+      - key: INTERNAL_SERVICE_KEY
+        sync: false           # shared secret the Node.js backend sends
+      - key: ALLOWED_ORIGINS
+        sync: false           # e.g. https://your-backend.onrender.com
+      - key: AZURE_JUDGE_ENABLED
+        value: "true"
+      - key: AZURE_FOUNDRY_ENDPOINT
+        sync: false           # https://<resource>.openai.azure.com
+      - key: AZURE_FOUNDRY_KEY
+        sync: false           # rotate the key pasted in chat before deploying!
+      - key: AZURE_FOUNDRY_DEPLOYMENT
+        value: gpt-5-mini
+      - key: AZURE_FOUNDRY_API_VERSION
+        value: 2025-01-01-preview
+    disk:
+      name: ecotrace-images
+      mountPath: /var/lib/ecotrace
+      sizeGB: 2                # privacy-processed + original images

@@ -8,7 +8,8 @@ microservice and get a garbage-verification result.
 ```bash
 MICROSERVICE_URL=http://localhost:8000        # local
 # MICROSERVICE_URL=http://microservice:8000   # Docker compose / k8s
-INTERNAL_SERVICE_KEY=                          # leave blank if not set in microservice .env
+# MICROSERVICE_URL=https://ecotrace-ai-ml.onrender.com  # deployed (Render)
+INTERNAL_SERVICE_KEY=                          # must match INTERNAL_SERVICE_KEY on the service
 ```
 
 The microservice URL is **internal only** — never expose it publicly.

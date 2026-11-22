@@ -62,7 +62,25 @@ strict Pydantic JSON validation, bounded retries, no fabricated confidence.
 **Phase 5:** Decision engine uses all model evidence — judge YES with no YOLO
 boxes is NEVER rejected as "no waste evidence"; moderation kept separate.
 
-Planned (Phase 6):
+## Deployment (Render)
+
+The service is containerised (`Dockerfile`) and has a `render.yaml` Blueprint
+so your team only needs the deployed URL — no local `.env` or model downloads:
+
+1. Rotate the Azure key if it was ever pasted in chat.
+2. Push `microservice` branch to GitHub.
+3. Render Dashboard → **New → Blueprint** → select the repo → `render.yaml`
+   is detected automatically.
+4. Fill the `sync: false` secrets: `INTERNAL_SERVICE_KEY`, `ALLOWED_ORIGINS`,
+   `AZURE_FOUNDRY_ENDPOINT`, `AZURE_FOUNDRY_KEY`.
+5. Backend uses `MICROSERVICE_URL=https://<your-service>.onrender.com`.
+
+Notes: Starter plan (2 GB RAM) required; a 2 GB persistent disk stores privacy
+images; `/health` is the health check; `/api/v1/verify/batch` handles up to 8
+images with bounded concurrency.
+
+Phase 6 implemented: Docker + Render Blueprint + batch endpoint + production
+CORS hardening.
 
 - **Phase 2** — Amazon Rekognition (moderation, labels, faces, text) + privacy
   blurring pipeline (faces & license plates) with separate original/processed storage

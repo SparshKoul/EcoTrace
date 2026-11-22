@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Shared secret the Node.js backend must send in ``X-Internal-Service-Key``.
     # When empty, auth is disabled (development only).
     internal_service_key: str = ""
+    allowed_origins: str = ""  # comma-separated; empty = all (dev only)
 
     # --- Request limits / security -----------------------------------------
     max_upload_bytes: MaxBytes = 8 * 1024 * 1024  # 8 MiB default upload cap

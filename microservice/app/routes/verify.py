@@ -2,7 +2,11 @@
 
 from typing import Optional
 
+import asyncio
+from typing import Annotated
+
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
 from app.schemas.request import ReportType
@@ -11,6 +15,22 @@ from app.services.image_processing import ImageValidationError
 from app.services.verification_service import VerificationService
 
 router = APIRouter(tags=["verify"])
+
+# Number of images in a batch and how many are processed concurrently.
+MAX_BATCH_SIZE = 8
+
+
+class BatchItemResult(BaseModel):
+    report_id: str
+    success: bool
+    result: object | None = None
+    error: str | None = None
+
+
+class BatchResponse(BaseModel):
+    success: bool
+    processed: int
+    results: list[BatchItemResult] = Field(default_factory=list)
 
 
 def _read_upload(file: UploadFile, settings: Settings) -> bytes:
@@ -81,6 +101,56 @@ async def verify(
         )
     except ImageValidationError as exc:
         raise _map_validation_error(exc) from exc
+
+
+@router.post(
+    "/api/v1/verify/batch",
+    response_model=BatchResponse,
+    summary="Verify multiple images with bounded concurrency",
+)
+async def verify_batch(
+    request: Request,
+    files: Annotated[list[UploadFile], File(..., description="Up to 8 images")],
+    report_ids: Annotated[list[str], Form(..., description="One report_id per file")],
+    report_types: Annotated[list[str], Form(..., description="One report_type per file")],
+) -> BatchResponse:
+    """Process several reports concurrently. Each item has its own result/error."""
+    settings: Settings = request.app.state.settings
+    if len(files) != len(report_ids) or len(files) != len(report_types):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"success": False, "error": "batch_length_mismatch"},
+        )
+    if not files or len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"success": False, "error": "batch_size_invalid"},
+        )
+
+    service = VerificationService(registry=request.app.state.registry, settings=settings)
+    semaphore = asyncio.Semaphore(settings.verify_concurrency_limit)
+
+    async def one(file: UploadFile, report_id: str, report_type: str) -> BatchItemResult:
+        async with semaphore:
+            try:
+                from app.schemas.request import ReportType
+
+                data = _read_upload(file, settings)
+                result = await service.verify(
+                    data,
+                    report_id=report_id,
+                    report_type=ReportType(report_type),
+                    declared_mime=file.content_type,
+                )
+                return BatchItemResult(report_id=report_id, success=True, result=result)
+            except (HTTPException, ValueError) as exc:
+                detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                return BatchItemResult(report_id=report_id, success=False, error=str(detail)[:200])
+
+    outcomes = await asyncio.gather(
+        *(one(f, rid, rt) for f, rid, rt in zip(files, report_ids, report_types))
+    )
+    return BatchResponse(success=True, processed=len(outcomes), results=list(outcomes))
 
 
 @router.post(
