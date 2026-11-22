@@ -82,8 +82,8 @@ export function useGps(): GpsState {
 
     let position: GeolocationPosition;
     try {
-      // First ask the device for its best fix. Many desktops have no GPS chip and this can time out.
-      position = await requestPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 10_000 });
+      // First ask the device for its best fix with cached fix allowed (up to 30s) so it returns fast.
+      position = await requestPosition({ enableHighAccuracy: true, maximumAge: 30_000, timeout: 2_500 });
     } catch (firstError) {
       const first = firstError as GeolocationPositionError;
       if (first.code === first.PERMISSION_DENIED) {
@@ -94,7 +94,7 @@ export function useGps(): GpsState {
       }
       try {
         // Second attempt accepts a cached or network-based fix, which arrives quickly without GPS hardware.
-        position = await requestPosition({ enableHighAccuracy: false, maximumAge: 60_000, timeout: 10_000 });
+        position = await requestPosition({ enableHighAccuracy: false, maximumAge: 60_000, timeout: 3_500 });
       } catch (secondError) {
         const second = secondError as GeolocationPositionError;
         const message = positionErrorText(second.code === second.PERMISSION_DENIED ? second : first);

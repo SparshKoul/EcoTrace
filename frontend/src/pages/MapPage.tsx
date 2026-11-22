@@ -14,7 +14,7 @@ import { useApp } from '../state/AppContext';
 import type { GeoPoint, Site } from '../types';
 
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const { sites, areas, feed, loading, locate, locateByIp, notify, backExistingSite } = useApp();
+  const { sites, areas, feed, loading, fix, locate, locateByIp, notify, backExistingSite } = useApp();
   const [complaintSiteId, setComplaintSiteId] = useState<string | null>(null);
   const [localitySite, setLocalitySite] = useState<Site | null>(null);
   const [focusPoint, setFocusPoint] = useState<GeoPoint | null>(null);
@@ -50,6 +50,17 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
   /** Exact device location only — this button never substitutes an IP-derived position. */
   const useMyLocation = async () => {
+    // If the browser already acquired a fresh fix from the continuous watch, centre instantly.
+    if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lng) && Date.now() - fix.timestamp < 60_000) {
+      const point = { lat: fix.lat, lng: fix.lng };
+      setUserPoint(point);
+      setFocusPoint(point);
+      setApproxLabel(null);
+      setAskForLocation(false);
+      notify(`Map centred on your location (±${Math.round(fix.accuracyM)} m).`);
+      return;
+    }
+
     setLocating(true);
     setLocationError(null);
     const result = await locate();
