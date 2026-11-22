@@ -68,9 +68,23 @@ export interface ReportSubmission {
   readonly media: readonly Blob[];
 }
 
+export interface AiVerificationDetails {
+  readonly status: 'VERIFIED' | 'REVIEW_REQUIRED' | 'REJECTED' | 'ACCEPTED';
+  readonly wasteCategory?: string;
+  readonly confidence?: number;
+  readonly auditSummary?: string;
+  readonly rejectionReason?: string;
+  readonly detectedClasses?: string[];
+  readonly siteAction?: 'merged' | 'created';
+  readonly siteId?: string;
+  readonly evidenceUrl?: string;
+}
+
 export interface ReportReceipt {
   readonly report_id: string;
-  readonly status: 'PROCESSING';
+  readonly status: 'PROCESSING' | 'ACCEPTED' | 'VERIFIED' | 'REVIEW_REQUIRED' | 'REJECTED';
+  readonly site_id?: string;
+  readonly aiVerification?: AiVerificationDetails;
 }
 
 export interface ActivityItem {

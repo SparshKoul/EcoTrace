@@ -231,9 +231,51 @@ export async function submitReport(submission: ReportSubmission): Promise<Report
       longitude: submission.location.lng,
     }),
   });
-  const data = await response.json().catch(() => ({})) as { report?: { id?: string }; error?: string; message?: string };
+  const data = await response.json().catch(() => ({})) as {
+    report?: { id?: string; photo_url?: string; sanitized_photo_url?: string };
+    siteId?: string;
+    clustered?: boolean;
+    aiVerification?: any;
+    error?: string;
+    message?: string;
+    details?: any;
+  };
+
+  // If rejected by AI vision judge, return receipt as REJECTED with full judge statement
+  if (response.status === 422 && (data.error === 'AI_VERIFICATION_REJECTED' || data.details)) {
+    return {
+      report_id: `rejected-${Date.now()}`,
+      status: 'REJECTED',
+      aiVerification: {
+        status: 'REJECTED',
+        wasteCategory: submission.type,
+        confidence: data.details?.confidence ?? 0.85,
+        auditSummary: data.details?.auditSummary ?? data.message,
+        rejectionReason: data.details?.rejectionReason ?? data.message ?? 'Image was evaluated and not recognized as outdoor waste.',
+        detectedClasses: data.details?.detectedClasses ?? [],
+      },
+    };
+  }
+
   if (!response.ok) throw new Error(data.message ?? data.error ?? 'The report could not be submitted.');
-  return { report_id: String(data.report?.id ?? `local-${Date.now()}`), status: 'PROCESSING' };
+
+  const ai = data.aiVerification;
+  return {
+    report_id: String(data.report?.id ?? `local-${Date.now()}`),
+    status: (ai?.status === 'VERIFIED' || ai?.status === 'ACCEPTED') ? 'VERIFIED' : (ai?.status === 'REJECTED' ? 'REJECTED' : 'REVIEW_REQUIRED'),
+    site_id: data.siteId,
+    aiVerification: ai ? {
+      status: ai.status,
+      wasteCategory: ai.waste_category || ai.category || submission.type,
+      confidence: ai.confidence,
+      auditSummary: ai.audit_summary,
+      rejectionReason: ai.rejection_reason,
+      detectedClasses: ai.detected_classes,
+      siteAction: data.clustered ? 'merged' : 'created',
+      siteId: data.siteId,
+      evidenceUrl: data.report?.photo_url || data.report?.sanitized_photo_url,
+    } : undefined,
+  };
 }
 
 export async function fetchComplaint(siteId: string): Promise<ComplaintLetter> {

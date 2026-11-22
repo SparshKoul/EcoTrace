@@ -42,6 +42,23 @@ export interface VerifyOptions {
   mimeType?: string;
 }
 
+const REPORT_TYPE_MAP: Record<string, string> = {
+  dump: "garbage_dump",
+  garbage_dump: "garbage_dump",
+  plastic: "plastic_waste",
+  plastic_waste: "plastic_waste",
+  overflowing_bin: "overflowing_bin",
+  burning_waste: "burning_waste",
+  construction: "construction_waste",
+  construction_waste: "construction_waste",
+  water: "water_pollution",
+  water_pollution: "water_pollution",
+  littering: "littering",
+  other: "other",
+  mixed_municipal: "garbage_dump",
+  no_bin: "garbage_dump",
+};
+
 export class AiVerifyClient {
   private readonly baseUrl: string;
   private readonly serviceKey: string;
@@ -63,7 +80,7 @@ export class AiVerifyClient {
     }
 
     if (photoDataOrUrl.startsWith("http://") || photoDataOrUrl.startsWith("https://")) {
-      const res = await fetch(photoDataOrUrl, { signal: AbortSignal.timeout(5_000) });
+      const res = await fetch(photoDataOrUrl, { signal: AbortSignal.timeout(15_000) });
       const arrayBuf = await res.arrayBuffer();
       return {
         mimeType: res.headers.get("content-type") || "image/jpeg",
@@ -83,7 +100,8 @@ export class AiVerifyClient {
     options: VerifyOptions = {},
   ): Promise<AiVerifyResponse> {
     const reportId = options.reportId || `ECO-${Date.now().toString(36)}`;
-    const reportType = options.reportType || "garbage_dump";
+    const rawType = options.reportType || "garbage_dump";
+    const safeReportType = REPORT_TYPE_MAP[rawType.toLowerCase()] ?? "garbage_dump";
 
     const fallback: AiVerifyResponse = {
       is_waste: true,
@@ -91,7 +109,7 @@ export class AiVerifyClient {
       detected_classes: ["fallback_unverified_waste"],
       status: "REVIEW_REQUIRED",
       is_waste_detected: true,
-      waste_category: reportType,
+      waste_category: safeReportType,
       detections: [],
       privacy: { faces_blurred: 0, plates_blurred: 0, original_stored: false, processed_stored: false },
       siglip: { available: false, predicted_category: null, confidence: null },
@@ -107,10 +125,11 @@ export class AiVerifyClient {
 
     try {
       const form = new FormData();
-      const ext = mimeType.includes("png") ? "png" : "jpg";
-      form.append("file", new Blob([buffer as any], { type: mimeType }), `${reportId}.${ext}`);
+      const safeMime = mimeType === "image/png" ? "image/png" : "image/jpeg";
+      const ext = safeMime === "image/png" ? "png" : "jpg";
+      form.append("file", new Blob([buffer as any], { type: safeMime }), `${reportId}.${ext}`);
       form.append("report_id", reportId);
-      form.append("report_type", reportType);
+      form.append("report_type", safeReportType);
 
       if (options.latitude !== undefined) form.append("latitude", String(options.latitude));
       if (options.longitude !== undefined) form.append("longitude", String(options.longitude));
@@ -124,31 +143,39 @@ export class AiVerifyClient {
         method: "POST",
         headers,
         body: form,
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(45_000),
       });
 
       if (!response.ok) {
-        console.warn(`[AiVerifyClient] Non-200 response (${response.status}) from AI service`);
+        let errorDetail = "";
+        try {
+          const errBody = await response.text();
+          errorDetail = `Body: ${errBody}`;
+        } catch {}
+        console.warn(`[AiVerifyClient] Non-200 response (${response.status}) from AI service. ${errorDetail}`);
         return fallback;
       }
 
       const data = (await response.json()) as any;
-      if (!data.success) return fallback;
+      if (!data.success && data.detail) {
+        console.warn("[AiVerifyClient] Validation detail from AI service:", data.detail);
+        return fallback;
+      }
 
       const decisionResult = String(data.decision?.result || data.status || "").toUpperCase();
       const reasons: string[] = Array.isArray(data.decision?.reasons) ? data.decision.reasons : [];
-      const reasonText = reasons.join(". ") || data.bedrock?.reason || undefined;
+      const reasonText = (reasons.length > 0 ? reasons.join(". ") : undefined) || data.bedrock?.reason || undefined;
       const detections = Array.isArray(data.detections) ? data.detections : [];
-      const category = data.siglip?.predicted_category || data.waste_category || reportType;
+      const category = data.siglip?.predicted_category || data.waste_category || safeReportType;
       const confidence =
         data.decision?.confidence ??
         data.siglip?.confidence ??
         (detections.length ? Math.max(...detections.map((d: any) => d.confidence)) : 0.85);
 
-      const isRejected = decisionResult === "REJECTED";
+      const isRejected = decisionResult === "REJECTED" || data.status === "REJECTED" || data.bedrock?.judgement === "NO";
       const status: "ACCEPTED" | "VERIFIED" | "REVIEW_REQUIRED" | "REJECTED" = isRejected
         ? "REJECTED"
-        : decisionResult === "VERIFIED" || decisionResult === "ACCEPTED"
+        : decisionResult === "VERIFIED" || decisionResult === "ACCEPTED" || data.status === "VERIFIED" || data.status === "ACCEPTED"
         ? "VERIFIED"
         : "REVIEW_REQUIRED";
 
@@ -156,7 +183,7 @@ export class AiVerifyClient {
         is_waste: !isRejected,
         status,
         confidence,
-        detected_classes: detections.map((d: any) => d.label),
+        detected_classes: detections.map((d: any) => d.label || d.class || d),
         is_waste_detected: data.is_waste_detected ?? !isRejected,
         waste_category: category,
         detections,
@@ -165,8 +192,8 @@ export class AiVerifyClient {
         bedrock: data.bedrock ?? { available: false, judgement: null, reason: null },
         decision: data.decision ?? { result: decisionResult, confidence, reasons },
         model_versions: data.model_versions ?? { detector: null, classifier: null },
-        rejection_reason: isRejected ? reasonText || "Image was evaluated and not recognized as outdoor waste." : undefined,
-        audit_summary: reasonText || `Classified as ${category} with ${(confidence * 100).toFixed(0)}% confidence.`,
+        rejection_reason: isRejected ? (reasonText || "Image was evaluated and not recognized as outdoor waste.") : undefined,
+        audit_summary: reasonText || (data.bedrock?.reason ? `Vision Judge (${data.bedrock.model || "gpt-5-mini"}): ${data.bedrock.reason}` : `Classified as ${category} with ${(confidence * 100).toFixed(0)}% confidence.`),
         category,
         details: data,
       };

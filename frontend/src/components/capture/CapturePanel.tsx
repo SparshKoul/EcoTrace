@@ -3,17 +3,18 @@ import { RULES, TYPE_LABEL } from '../../config/rules';
 import { gateMessage, recordGate, shutterGate, submitGate, type GateFacts } from '../../domain/captureGates';
 import { useCamera } from '../../hooks/useCamera';
 import { useApp } from '../../state/AppContext';
-import type { ReportType } from '../../types';
+import type { ReportReceipt, ReportType } from '../../types';
 import { Button } from '../ui/Button';
 import { Chip } from '../ui/Chip';
 import { GpsBadge } from '../ui/GpsBadge';
+import { AiResponseCard } from '../ui/AiResponseCard';
 
 type Mode = 'photo' | 'walking' | 'no_bin';
 
 const PHOTO_TYPES: readonly ReportType[] = ['dump', 'construction', 'water', 'overflowing_bin'];
 
 export function CapturePanel({ onNavigate }: { onNavigate?: (tab: any) => void } = {}) {
-  const { fix, online, signedIn, gpsDenied, sendReport, notify } = useApp();
+  const { fix, online, signedIn, gpsDenied, sendReport, notify, sites, setFocusReport } = useApp();
   const camera = useCamera();
   const [mode, setMode] = useState<Mode>('photo');
   const [type, setType] = useState<ReportType>('dump');
@@ -21,6 +22,7 @@ export function CapturePanel({ onNavigate }: { onNavigate?: (tab: any) => void }
   const [media, setMedia] = useState<Blob[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState<ReportReceipt | null>(null);
   const previewsRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -79,6 +81,7 @@ export function CapturePanel({ onNavigate }: { onNavigate?: (tab: any) => void }
       return;
     }
     setSending(true);
+    setLastReceipt(null);
     try {
       const receipt = await sendReport({
         type: mode === 'no_bin' ? 'no_bin' : type,
@@ -87,9 +90,13 @@ export function CapturePanel({ onNavigate }: { onNavigate?: (tab: any) => void }
         note: note.trim(),
         media,
       });
-      notify(`Report ${receipt.report_id} received. Status: ${receipt.status}.`);
+      setLastReceipt(receipt);
+      if (receipt.status === 'REJECTED') {
+        notify('Image evaluated by AI and rejected as non-waste.');
+      } else {
+        notify(`Report ${receipt.report_id} verified. Status: ${receipt.status}.`);
+      }
       reset();
-      if (onNavigate) onNavigate('map');
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : 'Submission failed. Try again.');
     } finally {
@@ -108,6 +115,35 @@ export function CapturePanel({ onNavigate }: { onNavigate?: (tab: any) => void }
           Live camera only — gallery uploads are disabled. Every report needs a GPS fix within {RULES.GPS_MAX_ACCURACY_M} m.
         </p>
       </header>
+
+      {lastReceipt?.aiVerification && (
+        <AiResponseCard
+          verification={lastReceipt.aiVerification}
+          onNavigateToMap={(siteId) => {
+            const targetSite = sites.find((s) => s.id === siteId || s.id === lastReceipt.site_id);
+            if (targetSite) {
+              setFocusReport({
+                id: lastReceipt.report_id,
+                site_id: targetSite.id,
+                trash_category: targetSite.type,
+                severity_score: targetSite.severity,
+                report_count: targetSite.reportCount,
+                latitude: targetSite.lat,
+                longitude: targetSite.lng,
+                cover_media_url: targetSite.evidenceUrl,
+                media_type: 'photo',
+                ulb_name: targetSite.boundary.ulb,
+                mla_constituency: targetSite.boundary.mla,
+                mp_constituency: targetSite.boundary.mp,
+                updated_at: new Date().toISOString(),
+                status: 'open',
+              } as any);
+            }
+            if (onNavigate) onNavigate('map');
+          }}
+          onDismiss={() => setLastReceipt(null)}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <GpsBadge />
