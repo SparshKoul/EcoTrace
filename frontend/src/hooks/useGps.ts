@@ -83,7 +83,7 @@ export function useGps(): GpsState {
     let position: GeolocationPosition;
     try {
       // First ask the device for its best fix with cached fix allowed (up to 30s) so it returns fast.
-      position = await requestPosition({ enableHighAccuracy: true, maximumAge: 30_000, timeout: 2_500 });
+      position = await requestPosition({ enableHighAccuracy: true, maximumAge: 30_000, timeout: 2_000 });
     } catch (firstError) {
       const first = firstError as GeolocationPositionError;
       if (first.code === first.PERMISSION_DENIED) {
@@ -94,7 +94,7 @@ export function useGps(): GpsState {
       }
       try {
         // Second attempt accepts a cached or network-based fix, which arrives quickly without GPS hardware.
-        position = await requestPosition({ enableHighAccuracy: false, maximumAge: 60_000, timeout: 3_500 });
+        position = await requestPosition({ enableHighAccuracy: false, maximumAge: 60_000, timeout: 2_500 });
       } catch (secondError) {
         const second = secondError as GeolocationPositionError;
         const message = positionErrorText(second.code === second.PERMISSION_DENIED ? second : first);
@@ -167,24 +167,47 @@ export function useGps(): GpsState {
     }
 
     setLoading(true);
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const next = toFix(position);
-        if (!Number.isFinite(next.lat) || !Number.isFinite(next.lng)) return;
-        setFix(next);
-        setDenied(false);
-        setError(null);
-        setLoading(false);
-      },
-      () => setLoading(false),
-      {
-        enableHighAccuracy: true,
-        maximumAge: Math.min(5_000, RULES.GPS_MAX_AGE_MS),
-        timeout: 30_000,
-      },
-    );
+    let activeWatchId: number | null = null;
+    let fallbackStarted = false;
 
-    return () => navigator.geolocation.clearWatch(watchId);
+    const startWatch = (highAccuracy: boolean) => {
+      activeWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const next = toFix(position);
+          if (!Number.isFinite(next.lat) || !Number.isFinite(next.lng)) return;
+          setFix(next);
+          setDenied(false);
+          setError(null);
+          setLoading(false);
+        },
+        (err) => {
+          setLoading(false);
+          if (err && err.code === err.PERMISSION_DENIED) {
+            setDenied(true);
+            return;
+          }
+          // If high-accuracy watch times out or fails (common on laptops without GPS), fallback to network watch!
+          if (highAccuracy && !fallbackStarted) {
+            fallbackStarted = true;
+            if (activeWatchId !== null) {
+              navigator.geolocation.clearWatch(activeWatchId);
+            }
+            startWatch(false);
+          }
+        },
+        {
+          enableHighAccuracy: highAccuracy,
+          maximumAge: highAccuracy ? Math.min(5_000, RULES.GPS_MAX_AGE_MS) : 15_000,
+          timeout: highAccuracy ? 5_000 : 15_000,
+        },
+      );
+    };
+
+    startWatch(true);
+
+    return () => {
+      if (activeWatchId !== null) navigator.geolocation.clearWatch(activeWatchId);
+    };
   }, [nonce]);
 
   return { fix, denied, loading, error, refresh, locate, locateByIp };

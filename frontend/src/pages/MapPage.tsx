@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LocalityPanel } from '../components/areas/Scorecard';
 import { CaptureModal } from '../components/capture/CaptureModal';
 import { ComplaintModal } from '../components/complaint/ComplaintModal';
@@ -13,6 +13,22 @@ import type { Tab } from '../navigation';
 import { useApp } from '../state/AppContext';
 import type { GeoPoint, Site } from '../types';
 
+const SESSION_PROMPT_KEY = 'ecotrace_location_prompt_seen';
+
+const isPromptSeen = () => {
+  try {
+    return typeof window !== 'undefined' && sessionStorage.getItem(SESSION_PROMPT_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const markPromptSeen = () => {
+  try {
+    if (typeof window !== 'undefined') sessionStorage.setItem(SESSION_PROMPT_KEY, 'true');
+  } catch {}
+};
+
 export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const { sites, areas, feed, loading, fix, locate, locateByIp, notify, backExistingSite } = useApp();
   const [complaintSiteId, setComplaintSiteId] = useState<string | null>(null);
@@ -20,10 +36,39 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [focusPoint, setFocusPoint] = useState<GeoPoint | null>(null);
   const [userPoint, setUserPoint] = useState<GeoPoint | null>(null);
   const [locating, setLocating] = useState(false);
-  const [askForLocation, setAskForLocation] = useState(true);
+  const [askForLocation, setAskForLocation] = useState(!isPromptSeen());
   const [locationError, setLocationError] = useState<string | null>(null);
   const [approxLabel, setApproxLabel] = useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const autoCenteredRef = useRef(false);
+
+  // Check if browser already granted or denied permission to avoid prompting again
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then((status) => {
+        if (status.state === 'granted' || status.state === 'denied') {
+          setAskForLocation(false);
+          markPromptSeen();
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  // Google Maps style auto-refresh: keep citizen's position live on the map whenever GPS moves
+  useEffect(() => {
+    if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lng)) {
+      const point = { lat: fix.lat, lng: fix.lng };
+      setUserPoint(point);
+      setApproxLabel(null);
+
+      if (!autoCenteredRef.current) {
+        autoCenteredRef.current = true;
+        setFocusPoint(point);
+        setAskForLocation(false);
+        markPromptSeen();
+      }
+    }
+  }, [fix]);
 
   const awayFromSamples = focusPoint !== null && distanceMeters(focusPoint, PILOT_CENTRE) > 5_000;
 
@@ -34,6 +79,7 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       setFocusPoint(point);
       setApproxLabel(result.location.label || 'your area');
       setAskForLocation(false);
+      markPromptSeen();
       notify(`Map centred near ${result.location.label || 'your area'} from your IP address — approximate, city level.`);
     } else {
       setLocationError(result.error ?? 'Could not look up your approximate location.');
@@ -43,15 +89,18 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const useApproxLocation = async () => {
     setLocating(true);
     setLocationError(null);
+    markPromptSeen();
     const result = await locateByIp();
     setLocating(false);
     applyApprox(result);
   };
 
-  /** Exact device location only — this button never substitutes an IP-derived position. */
+  /** Fast device location with instant centering & fallback */
   const useMyLocation = async () => {
-    // If the browser already acquired a fresh fix from the continuous watch, centre instantly.
-    if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lng) && Date.now() - fix.timestamp < 60_000) {
+    markPromptSeen();
+
+    // If the browser already acquired a fix, centre instantly (0ms)
+    if (fix && Number.isFinite(fix.lat) && Number.isFinite(fix.lng)) {
       const point = { lat: fix.lat, lng: fix.lng };
       setUserPoint(point);
       setFocusPoint(point);
@@ -64,8 +113,8 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
     setLocating(true);
     setLocationError(null);
     const result = await locate();
-    setLocating(false);
     if (result.fix) {
+      setLocating(false);
       const point = { lat: result.fix.lat, lng: result.fix.lng };
       setUserPoint(point);
       setFocusPoint(point);
@@ -73,9 +122,16 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       setAskForLocation(false);
       notify(`Map centred on your location (±${Math.round(result.fix.accuracyM)} m).`);
     } else {
-      const msg = result.error ?? 'Location is unavailable right now.';
-      setLocationError(msg);
-      notify(msg);
+      // Auto-fallback to IP location so desktop/laptop users without GPS chip don't hang
+      const ipResult = await locateByIp();
+      setLocating(false);
+      if (ipResult.location) {
+        applyApprox(ipResult);
+      } else {
+        const msg = result.error ?? 'Location is unavailable right now.';
+        setLocationError(msg);
+        notify(msg);
+      }
     }
   };
 
@@ -132,7 +188,13 @@ export function MapPage({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
                 Use approximate location
               </Button>
             )}
-            <Button variant="outline" onClick={() => setAskForLocation(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAskForLocation(false);
+                markPromptSeen();
+              }}
+            >
               {locationError ? 'Keep Chitkara view' : 'Not now'}
             </Button>
           </div>
