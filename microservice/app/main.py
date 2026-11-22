@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -59,6 +60,23 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Consistent 422 envelope that tells the caller *what* was missing."""
+        errors = []
+        for err in exc.errors():
+            loc = ".".join(str(part) for part in err.get("loc", []))
+            errors.append({"field": loc or "body", "message": err.get("msg", "invalid")})
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": "validation_error",
+                "detail": "Request validation failed — use multipart/form-data.",
+                "fields": errors,
+            },
+        )
 
     # In production only the Node.js backend origin is allowed. For local
     # development (no origins configured) all origins are permitted.
